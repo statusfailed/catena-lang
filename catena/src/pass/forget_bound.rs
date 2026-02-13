@@ -1,5 +1,4 @@
-//! Map `bound.eta` operations into compact-closed structure
-
+//! Forget the `bound` symbol, replacing it with `value`.
 use crate::lang::{Arr, Obj};
 use metacat::{theory::OperationKey, tree::Tree};
 use open_hypergraphs::lax::{
@@ -8,9 +7,9 @@ use open_hypergraphs::lax::{
 };
 
 #[derive(Clone)]
-pub struct Unbound;
+pub struct ForgetBound;
 
-impl Functor<Obj, Arr, Obj, Arr> for Unbound {
+impl Functor<Obj, Arr, Obj, Arr> for ForgetBound {
     fn map_object(&self, o: &Obj) -> impl ExactSizeIterator<Item = Obj> {
         // bound(t) ⇒ value(t)
         let o: Tree<_, OperationKey> = match o {

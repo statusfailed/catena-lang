@@ -7,9 +7,9 @@ use open_hypergraphs::lax::{
 };
 
 #[derive(Clone)]
-pub struct Bend;
+pub struct ExpandEta;
 
-impl Functor<Obj, Arr, Obj, Arr> for Bend {
+impl Functor<Obj, Arr, Obj, Arr> for ExpandEta {
     fn map_object(&self, o: &Obj) -> impl ExactSizeIterator<Item = Obj> {
         std::iter::once(o.clone())
     }

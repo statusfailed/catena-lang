@@ -40,9 +40,9 @@ enum Command {
     /// Run compiler passes up to the given pass and output SVG
     Lower {
         #[arg()]
-        path: PathBuf,
-        #[arg()]
         pass: Pass,
+        #[arg()]
+        path: PathBuf,
         #[arg()]
         definition: String,
     },

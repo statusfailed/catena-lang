@@ -1,3 +1,7 @@
-pub mod arr;
-pub mod erase;
+// Types
 pub mod lang;
+
+// passes
+pub mod bend;
+pub mod erase;
+pub mod unbound;

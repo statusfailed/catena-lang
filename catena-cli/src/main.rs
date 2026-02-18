@@ -1,13 +1,16 @@
 use anyhow::anyhow;
 use clap::{Parser, Subcommand, ValueEnum};
+use std::collections::HashMap;
 use std::path::PathBuf;
 
 use hexpr::*;
-use metacat::{check::check, syntax::TheoryBundle, theory::OperationKey};
+use metacat::{check::check, prop::Nat, syntax::TheoryBundle, theory::OperationKey};
 use open_hypergraphs::lax::{OpenHypergraph, functor::Functor};
 
 use catena::lang::{Arr, Obj};
-use catena::pass::{erase::Erase, expand_eta::ExpandEta, forget_bound::ForgetBound};
+use catena::pass::{
+    erase::Erase, expand_eta::ExpandEta, forget_bound::ForgetBound, inline::Inline,
+};
 
 #[derive(Parser)]
 #[command(name = "catena", version=env!("CARGO_PKG_VERSION"))]
@@ -20,20 +23,11 @@ struct Cli {
 #[derive(Clone, Copy, PartialEq, Eq, ValueEnum)]
 enum Pass {
     Check,
+    Inline,
     Erase,
     ForgetBound,
     ExpandEta,
 }
-
-/// Passes after Check, in order. Each entry is (pass name, functor).
-const LOWER_PASSES: &[(
-    Pass,
-    fn(&OpenHypergraph<Obj, Arr>) -> OpenHypergraph<Obj, Arr>,
-)] = &[
-    (Pass::Erase, |t| Erase.map_arrow(t)),
-    (Pass::ForgetBound, |t| ForgetBound.map_arrow(t)),
-    (Pass::ExpandEta, |t| ExpandEta.map_arrow(t)),
-];
 
 #[derive(Subcommand)]
 enum Command {
@@ -60,6 +54,38 @@ fn main() -> anyhow::Result<()> {
     }
 }
 
+/// Construct the compiler lowering passes
+fn lower_passes(
+    arrow_theory: &metacat::theory::Theory<OperationKey>,
+    object_theory: &metacat::theory::Theory<Nat>,
+    definitions: &HashMap<Operation, metacat::syntax::Declaration>,
+) -> anyhow::Result<
+    Vec<(
+        Pass,
+        Box<dyn Fn(&OpenHypergraph<Obj, Arr>) -> OpenHypergraph<Obj, Arr>>,
+    )>,
+> {
+    let inline = {
+        let name = "f32.sum";
+        let op: Operation = name.parse()?;
+        let decl = definitions
+            .get(&op)
+            .ok_or_else(|| anyhow!("no such definition: {name}"))?;
+        let arrow = interpret_definition(arrow_theory, object_theory, decl)?;
+        Inline {
+            definitions: HashMap::from([(OperationKey(op), arrow)]),
+        }
+    };
+
+    Ok(vec![
+        (Pass::Inline, Box::new(move |t| inline.map_arrow(t))),
+        (Pass::Erase, Box::new(|t| Erase.map_arrow(t))),
+        (Pass::ForgetBound, Box::new(|t| ForgetBound.map_arrow(t))),
+        (Pass::ExpandEta, Box::new(|t| ExpandEta.map_arrow(t))),
+    ])
+}
+
+/// Lower a term by applying passes until the specified pass
 fn lower(path: PathBuf, until: Pass, definition: &str) -> anyhow::Result<()> {
     let TheoryBundle {
         arrow_theory,
@@ -71,24 +97,12 @@ fn lower(path: PathBuf, until: Pass, definition: &str) -> anyhow::Result<()> {
         .get(&definition.parse()?)
         .ok_or_else(|| anyhow!("no such definition: {definition}"))?;
 
-    let definition_hexpr = declaration
-        .definition
-        .clone()
-        .ok_or(anyhow!("not a definition: {definition}"))?;
-
-    let mut term = forget_labels(try_interpret(&arrow_theory, &definition_hexpr)?);
-    let source = forget_labels(try_interpret(&object_theory, &declaration.source_map)?);
-    let target = forget_labels(try_interpret(&object_theory, &declaration.target_map)?);
-
     // Check (always runs first)
-    let result = check(&arrow_theory, source, target, &mut term)
-        .map_err(|e| anyhow!("typechecking failed: {e:?}"))?;
-
-    let mut current = term.with_nodes(|_| result).unwrap();
+    let mut current = interpret_definition(&arrow_theory, &object_theory, declaration)?;
 
     // Run subsequent passes in order, stopping after the requested one
     if until != Pass::Check {
-        for &(pass, apply) in LOWER_PASSES {
+        for (pass, apply) in lower_passes(&arrow_theory, &object_theory, &definitions)? {
             current = apply(&current);
             current.quotient();
             if pass == until {
@@ -119,6 +133,23 @@ fn lower(path: PathBuf, until: Pass, definition: &str) -> anyhow::Result<()> {
     )?)?;
 
     Ok(())
+}
+
+fn interpret_definition(
+    arrow_theory: &metacat::theory::Theory<OperationKey>,
+    object_theory: &metacat::theory::Theory<Nat>,
+    declaration: &metacat::syntax::Declaration,
+) -> anyhow::Result<OpenHypergraph<Obj, Arr>> {
+    let definition_hexpr = declaration
+        .definition
+        .clone()
+        .ok_or_else(|| anyhow!("not a definition"))?;
+    let mut term = forget_labels(try_interpret(arrow_theory, &definition_hexpr)?);
+    let source = forget_labels(try_interpret(object_theory, &declaration.source_map)?);
+    let target = forget_labels(try_interpret(object_theory, &declaration.target_map)?);
+    let result = check(arrow_theory, source, target, &mut term)
+        .map_err(|e| anyhow!("typechecking failed: {e:?}"))?;
+    Ok(term.with_nodes(|_| result).unwrap())
 }
 
 fn forget_labels<O, A>(f: OpenHypergraph<O, A>) -> OpenHypergraph<(), A> {

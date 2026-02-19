@@ -47,7 +47,7 @@ pub fn discard_naturality<O: Clone + PartialEq, A: Clone>(
             .collect::<Vec<NodeId>>(),
     );
 
-    f.hypergraph.delete_edge(
+    f.hypergraph.delete_edges(
         &edge_live
             .iter()
             .enumerate()

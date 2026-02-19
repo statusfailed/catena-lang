@@ -6,3 +6,4 @@ edition = "2024"
 [dependencies]
 metacat = { workspace = true }
 open-hypergraphs = { workspace = true }
+thiserror = "2.0.18"

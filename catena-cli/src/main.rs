@@ -7,9 +7,11 @@ use hexpr::*;
 use metacat::{check::check, prop::Nat, syntax::TheoryBundle, theory::OperationKey};
 use open_hypergraphs::lax::{OpenHypergraph, functor::Functor};
 
+use catena::codegen::c::codegen;
 use catena::lang::{Arr, Obj};
 use catena::pass::{
-    erase::Erase, expand_eta::ExpandEta, forget_bound::ForgetBound, inline::Inline,
+    discard_naturality::discard_naturality, erase::Erase, expand_eta::ExpandEta,
+    forget_bound::ForgetBound, inline::Inline,
 };
 
 #[derive(Parser)]
@@ -27,10 +29,19 @@ enum Pass {
     Erase,
     ForgetBound,
     ExpandEta,
+    DiscardNaturality,
 }
 
 #[derive(Subcommand)]
 enum Command {
+    /// Run codegen for a given pass
+    Codegen {
+        #[arg()]
+        path: PathBuf,
+        #[arg()]
+        definition: String,
+    },
+
     /// Run compiler passes up to the given pass and output SVG
     Lower {
         #[arg()]
@@ -46,11 +57,17 @@ fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
+        Command::Codegen { path, definition } => {
+            let bundle = TheoryBundle::from_file(path)?;
+            let lowered = lower(&bundle, Pass::DiscardNaturality, &definition)?;
+            println!("{}", codegen(lowered, "out"));
+            Ok(())
+        }
         Command::Lower {
             path,
             pass,
             definition,
-        } => lower(path, pass, &definition),
+        } => lower_command(TheoryBundle::from_file(path)?, pass, &definition),
     }
 }
 
@@ -82,16 +99,24 @@ fn lower_passes(
         (Pass::Erase, Box::new(|t| Erase.map_arrow(t))),
         (Pass::ForgetBound, Box::new(|t| ForgetBound.map_arrow(t))),
         (Pass::ExpandEta, Box::new(|t| ExpandEta.map_arrow(t))),
+        (
+            Pass::DiscardNaturality,
+            Box::new(|t| discard_naturality(t.clone()).expect("discard_naturality failed")),
+        ),
     ])
 }
 
 /// Lower a term by applying passes until the specified pass
-fn lower(path: PathBuf, until: Pass, definition: &str) -> anyhow::Result<()> {
+fn lower(
+    bundle: &TheoryBundle,
+    until: Pass,
+    definition: &str,
+) -> anyhow::Result<OpenHypergraph<metacat::tree::Tree<(), OperationKey>, OperationKey>> {
     let TheoryBundle {
         arrow_theory,
         object_theory,
         definitions,
-    } = TheoryBundle::from_file(path)?;
+    } = bundle;
 
     let declaration = definitions
         .get(&definition.parse()?)
@@ -111,8 +136,15 @@ fn lower(path: PathBuf, until: Pass, definition: &str) -> anyhow::Result<()> {
         }
     }
 
+    Ok(current)
+}
+
+fn lower_command(bundle: TheoryBundle, until: Pass, definition: &str) -> anyhow::Result<()> {
+    let current = lower(&bundle, until, definition)?;
+
     // Pretty-print
-    let coarity = |op: &OperationKey| -> usize { object_theory.type_maps(op).1.targets.len() };
+    let coarity =
+        |op: &OperationKey| -> usize { bundle.object_theory.type_maps(op).1.targets.len() };
 
     let labels: Vec<String> = current
         .hypergraph

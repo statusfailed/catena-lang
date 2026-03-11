@@ -1,7 +1,10 @@
 /// Infer scope from open hypergraph structure
-// A two-pass algorithm,
-// Backwards pass: computes "longest common prefix" of reachable parent scopes
-// Forwards pass: computes shallowest possible scope in which each op can live
+/// TODO: It may be possible to replace this with something having more theoretical support, e.g.,
+/// the Danos–Regnier switching criterion for multiplicative linear logic.
+// Algorithm sketch:
+//  A two-pass algorithm,
+//  Backwards pass: computes "longest common prefix" of reachable parent scopes
+//  Forwards pass: computes shallowest possible scope in which each op can live
 use metacat::ssa::{SSA, SSAError, ssa};
 use open_hypergraphs::lax::{EdgeId, NodeId, OpenHypergraph};
 use std::collections::HashMap;
@@ -47,7 +50,7 @@ pub fn scopes<O: Clone + PartialEq, A: Clone + Debug>(
     // Propagate the 'stack' of parent scopes enclosing each node.
     // This computes the deepest scope a node must be available in.
     // TODO: should have no None values here(?)
-    let bwd_stacks: Vec<_> = backward(scope_ids, n, &targets, &ssa)
+    let bwd_stacks: Vec<_> = backward(scope_ids, n, &sources, &targets, &ssa)
         .into_iter()
         .collect::<Option<_>>()
         .ok_or(ScopeError::IncompleteBackwardPass)?;
@@ -123,6 +126,7 @@ struct Stack(Vec<ScopeId>);
 fn backward<O, A>(
     scope_ids: impl Fn(&A, &[&O], &[&O]) -> Vec<Option<usize>>,
     n: usize,
+    sources: &[NodeId],
     targets: &[NodeId],
     ssa: &Vec<SSA<O, A>>,
 ) -> Vec<Option<Stack>> {
@@ -131,6 +135,11 @@ fn backward<O, A>(
     let mut stacks: Vec<Option<Stack>> = vec![None; n];
     for t in targets {
         stacks[t.0] = Some(Stack::new());
+    }
+
+    // NOTE: sources must *also* be global, so no source can also be bound
+    for s in sources {
+        stacks[s.0] = Some(Stack::new());
     }
 
     // Propagate backwards: each op writes to its *sources* the longest common prefix of each

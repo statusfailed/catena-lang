@@ -2,27 +2,27 @@
 
 use std::collections::HashMap;
 
-use crate::lang::{Arr, Obj};
+use crate::lang::Arr;
 use open_hypergraphs::lax::{
     OpenHypergraph,
     functor::{Functor, try_define_map_arrow},
 };
 
-pub struct Inline {
-    pub definitions: HashMap<Arr, OpenHypergraph<Obj, Arr>>,
+pub struct Inline<O> {
+    pub definitions: HashMap<Arr, OpenHypergraph<O, Arr>>,
 }
 
-impl Functor<Obj, Arr, Obj, Arr> for Inline {
-    fn map_object(&self, o: &Obj) -> impl ExactSizeIterator<Item = Obj> {
+impl<O: Clone> Functor<O, Arr, O, Arr> for Inline<O> {
+    fn map_object(&self, o: &O) -> impl ExactSizeIterator<Item = O> {
         std::iter::once(o.clone())
     }
 
     fn map_operation(
         &self,
         a: &Arr,
-        source: &[Obj],
-        target: &[Obj],
-    ) -> open_hypergraphs::lax::OpenHypergraph<Obj, Arr> {
+        source: &[O],
+        target: &[O],
+    ) -> open_hypergraphs::lax::OpenHypergraph<O, Arr> {
         match self.definitions.get(a) {
             Some(f) => f.clone(),
             None => {
@@ -35,8 +35,8 @@ impl Functor<Obj, Arr, Obj, Arr> for Inline {
 
     fn map_arrow(
         &self,
-        f: &open_hypergraphs::lax::OpenHypergraph<Obj, Arr>,
-    ) -> open_hypergraphs::lax::OpenHypergraph<Obj, Arr> {
+        f: &open_hypergraphs::lax::OpenHypergraph<O, Arr>,
+    ) -> open_hypergraphs::lax::OpenHypergraph<O, Arr> {
         try_define_map_arrow(self, f).expect("programmer error: not a functor")
     }
 }

@@ -4,8 +4,8 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 use hexpr::*;
-use metacat::{check::check, prop::Nat, syntax::TheoryBundle, theory::OperationKey};
-use open_hypergraphs::lax::{OpenHypergraph, functor::Functor};
+use metacat::{check::check, syntax::TheoryBundle, theory::OperationKey};
+use open_hypergraphs::lax::{functor::Functor, OpenHypergraph};
 
 use catena::codegen::c::codegen;
 use catena::lang::{Arr, Obj};
@@ -25,7 +25,6 @@ struct Cli {
 #[derive(Clone, Copy, PartialEq, Eq, ValueEnum)]
 enum Pass {
     Check,
-    Inline,
     Erase,
     ForgetBound,
     ExpandEta,
@@ -73,29 +72,14 @@ fn main() -> anyhow::Result<()> {
 
 /// Construct the compiler lowering passes
 fn lower_passes(
-    arrow_theory: &metacat::theory::Theory<OperationKey>,
-    object_theory: &metacat::theory::Theory<Nat>,
-    definitions: &HashMap<Operation, metacat::syntax::Declaration>,
+    _bundle: &TheoryBundle,
 ) -> anyhow::Result<
     Vec<(
         Pass,
         Box<dyn Fn(&OpenHypergraph<Obj, Arr>) -> OpenHypergraph<Obj, Arr>>,
     )>,
 > {
-    let inline = {
-        let name = "f32.sum";
-        let op: Operation = name.parse()?;
-        let decl = definitions
-            .get(&op)
-            .ok_or_else(|| anyhow!("no such definition: {name}"))?;
-        let arrow = interpret_definition(arrow_theory, object_theory, decl)?;
-        Inline {
-            definitions: HashMap::from([(OperationKey(op), arrow)]),
-        }
-    };
-
     Ok(vec![
-        (Pass::Inline, Box::new(move |t| inline.map_arrow(t))),
         (Pass::Erase, Box::new(|t| Erase.map_arrow(t))),
         (Pass::ForgetBound, Box::new(|t| ForgetBound.map_arrow(t))),
         (Pass::ExpandEta, Box::new(|t| ExpandEta.map_arrow(t))),
@@ -106,30 +90,59 @@ fn lower_passes(
     ])
 }
 
+fn inline(
+    bundle: &TheoryBundle,
+    t: &mut OpenHypergraph<(), Arr>,
+) -> anyhow::Result<OpenHypergraph<(), Arr>> {
+    let inline = {
+        let names = ["f32.sum", "ones-2d", "id-matrix-2d"];
+        let mut inline_defs = HashMap::new();
+        for name in names {
+            let op: Operation = name.parse()?;
+            //let hexpr = bundle
+            //.definitions
+            //.get(&op)
+            //.and_then(|v| v.definition.clone())
+            //.ok_or_else(|| anyhow!("no such definition: {name}"))?;
+            let arrow = declaration_term(bundle, &op)?;
+            inline_defs.insert(OperationKey(op), arrow);
+        }
+        Inline {
+            definitions: inline_defs,
+        }
+    };
+    t.quotient().unwrap();
+    Ok(inline.map_arrow(t))
+}
+
 /// Lower a term by applying passes until the specified pass
+/// TODO: add a post-processing hook on `lower` to transform any pass into readable strings - used
+/// for lower command -> svg
 fn lower(
     bundle: &TheoryBundle,
     until: Pass,
     definition: &str,
 ) -> anyhow::Result<OpenHypergraph<metacat::tree::Tree<(), OperationKey>, OperationKey>> {
-    let TheoryBundle {
-        arrow_theory,
-        object_theory,
-        definitions,
-    } = bundle;
-
-    let declaration = definitions
-        .get(&definition.parse()?)
+    let key: Operation = definition.parse()?;
+    let declaration = bundle
+        .definitions
+        .get(&key)
         .ok_or_else(|| anyhow!("no such definition: {definition}"))?;
 
-    // Check (always runs first)
-    let mut current = interpret_definition(&arrow_theory, &object_theory, declaration)?;
+    // Get term from declaration & key
+    // NOTE: we *must* inline before typechecking: we need annotated nodes to be specialised to the
+    // types applied to each definition.
+    let mut current = declaration_term(bundle, &key)?;
+    let current = inline(bundle, &mut current)?;
+
+    // Check inlined
+    let mut current = compute_types(bundle, declaration, current)?;
 
     // Run subsequent passes in order, stopping after the requested one
     if until != Pass::Check {
-        for (pass, apply) in lower_passes(&arrow_theory, &object_theory, &definitions)? {
+        for (pass, apply) in lower_passes(bundle)? {
             current = apply(&current);
-            current.quotient();
+            current.quotient_witness().unwrap();
             if pass == until {
                 break;
             }
@@ -153,7 +166,7 @@ fn lower_command(bundle: TheoryBundle, until: Pass, definition: &str) -> anyhow:
         .map(|n| n.pretty(Some(&coarity)))
         .collect();
 
-    use open_hypergraphs_dot::{Options, svg::to_svg_with};
+    use open_hypergraphs_dot::{svg::to_svg_with, Options};
     use std::io::Write;
 
     let opts = Options::default().display();
@@ -167,19 +180,34 @@ fn lower_command(bundle: TheoryBundle, until: Pass, definition: &str) -> anyhow:
     Ok(())
 }
 
-fn interpret_definition(
-    arrow_theory: &metacat::theory::Theory<OperationKey>,
-    object_theory: &metacat::theory::Theory<Nat>,
+fn declaration_term(
+    bundle: &TheoryBundle,
+    key: &Operation,
+) -> anyhow::Result<OpenHypergraph<(), Arr>> {
+    let hexpr = bundle
+        .definitions
+        .get(key)
+        .and_then(|declaration| declaration.definition.clone())
+        .ok_or_else(|| anyhow!("no such definition: {key}"))?;
+
+    Ok(forget_labels(try_interpret(&bundle.arrow_theory, &hexpr)?))
+}
+
+fn compute_types(
+    bundle: &TheoryBundle,
     declaration: &metacat::syntax::Declaration,
+    term: OpenHypergraph<(), Arr>,
 ) -> anyhow::Result<OpenHypergraph<Obj, Arr>> {
-    let definition_hexpr = declaration
-        .definition
-        .clone()
-        .ok_or_else(|| anyhow!("not a definition"))?;
-    let mut term = forget_labels(try_interpret(arrow_theory, &definition_hexpr)?);
-    let source = forget_labels(try_interpret(object_theory, &declaration.source_map)?);
-    let target = forget_labels(try_interpret(object_theory, &declaration.target_map)?);
-    let result = check(arrow_theory, source, target, &mut term)
+    let mut term = term;
+    let source = forget_labels(try_interpret(
+        &bundle.object_theory,
+        &declaration.source_map,
+    )?);
+    let target = forget_labels(try_interpret(
+        &bundle.object_theory,
+        &declaration.target_map,
+    )?);
+    let result = check(&bundle.arrow_theory, source, target, &mut term)
         .map_err(|e| anyhow!("typechecking failed: {e:?}"))?;
     Ok(term.with_nodes(|_| result).unwrap())
 }

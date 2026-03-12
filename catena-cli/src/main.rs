@@ -1,11 +1,14 @@
 use anyhow::anyhow;
+use thiserror::Error;
+
 use clap::{Parser, Subcommand, ValueEnum};
+use open_hypergraphs::strict::vec::FiniteFunction;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
 use hexpr::*;
 use metacat::{check::check, syntax::TheoryBundle, theory::OperationKey};
-use open_hypergraphs::lax::{functor::Functor, OpenHypergraph};
+use open_hypergraphs::lax::{OpenHypergraph, functor::Functor};
 
 use catena::codegen::c::codegen;
 use catena::lang::{Arr, Obj};
@@ -72,16 +75,23 @@ fn main() -> anyhow::Result<()> {
 
 /// Construct the compiler lowering passes
 fn lower_passes(
-    _bundle: &TheoryBundle,
+    bundle: &TheoryBundle,
 ) -> anyhow::Result<
     Vec<(
         Pass,
         Box<dyn Fn(&OpenHypergraph<Obj, Arr>) -> OpenHypergraph<Obj, Arr>>,
     )>,
 > {
+    let bound_key = bundle.object_theory.get_operation_key("bound").unwrap();
+    let value_key = bundle.object_theory.get_operation_key("value").unwrap();
+    let forget_bound = ForgetBound::new(bound_key, value_key);
+
     Ok(vec![
         (Pass::Erase, Box::new(|t| Erase.map_arrow(t))),
-        (Pass::ForgetBound, Box::new(|t| ForgetBound.map_arrow(t))),
+        (
+            Pass::ForgetBound,
+            Box::new(move |t| forget_bound.map_arrow(t)),
+        ),
         (Pass::ExpandEta, Box::new(|t| ExpandEta.map_arrow(t))),
         (
             Pass::DiscardNaturality,
@@ -99,13 +109,13 @@ fn inline(
         let mut inline_defs = HashMap::new();
         for name in names {
             let op: Operation = name.parse()?;
-            //let hexpr = bundle
-            //.definitions
-            //.get(&op)
-            //.and_then(|v| v.definition.clone())
-            //.ok_or_else(|| anyhow!("no such definition: {name}"))?;
             let arrow = declaration_term(bundle, &op)?;
-            inline_defs.insert(OperationKey(op), arrow);
+            let key = bundle
+                .arrow_theory
+                .get_operation_key(name)
+                .ok_or(LowerError::UnknownOperation(name.to_string()))?;
+
+            inline_defs.insert(key, arrow);
         }
         Inline {
             definitions: inline_defs,
@@ -113,6 +123,22 @@ fn inline(
     };
     t.quotient().unwrap();
     Ok(inline.map_arrow(t))
+}
+
+/// An error during [`lower`]ing of a term
+#[derive(Error, Debug)]
+pub enum LowerError {
+    InvalidQuotient(FiniteFunction),
+    UnknownOperation(String),
+}
+
+impl std::fmt::Display for LowerError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            LowerError::InvalidQuotient(ff) => write!(f, "invalid quotient: {ff:?}"),
+            LowerError::UnknownOperation(name) => write!(f, "unknown operation {name}"),
+        }
+    }
 }
 
 /// Lower a term by applying passes until the specified pass
@@ -142,7 +168,7 @@ fn lower(
     if until != Pass::Check {
         for (pass, apply) in lower_passes(bundle)? {
             current = apply(&current);
-            current.quotient_witness().unwrap();
+            current.quotient().map_err(LowerError::InvalidQuotient)?;
             if pass == until {
                 break;
             }
@@ -166,7 +192,7 @@ fn lower_command(bundle: TheoryBundle, until: Pass, definition: &str) -> anyhow:
         .map(|n| n.pretty(Some(&coarity)))
         .collect();
 
-    use open_hypergraphs_dot::{svg::to_svg_with, Options};
+    use open_hypergraphs_dot::{Options, svg::to_svg_with};
     use std::io::Write;
 
     let opts = Options::default().display();

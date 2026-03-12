@@ -11,3 +11,4 @@ hexpr = "0.2.0"
 metacat.workspace = true
 open-hypergraphs.workspace = true
 open-hypergraphs-dot = { version = "0.2.3", features = ["svg"] }
+thiserror = "2.0.18"

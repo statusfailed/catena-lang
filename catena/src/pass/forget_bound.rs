@@ -6,16 +6,30 @@ use open_hypergraphs::lax::{
     functor::{Functor, try_define_map_arrow},
 };
 
+/// Quotient forward and reverse values in the language:
+/// any type labeled "bound(t)" becomes "value(t)".
 #[derive(Clone)]
-pub struct ForgetBound;
+pub struct ForgetBound {
+    bound_key: OperationKey,
+    value_key: OperationKey,
+}
+
+impl ForgetBound {
+    pub fn new(bound_key: OperationKey, value_key: OperationKey) -> Self {
+        Self {
+            bound_key,
+            value_key,
+        }
+    }
+}
 
 impl Functor<Obj, Arr, Obj, Arr> for ForgetBound {
     fn map_object(&self, o: &Obj) -> impl ExactSizeIterator<Item = Obj> {
         // bound(t) ⇒ value(t)
         let o: Tree<_, OperationKey> = match o {
             Tree::Node(label, port, trees) => {
-                let new_label = if label.to_string() == "bound" {
-                    let result = OperationKey("value".to_string().parse().unwrap());
+                let new_label = if label == &self.bound_key {
+                    let result = self.value_key.clone();
                     result
                 } else {
                     label.clone()

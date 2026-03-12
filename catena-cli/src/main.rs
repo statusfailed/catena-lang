@@ -11,7 +11,7 @@ use metacat::ssa::SSAError;
 use metacat::{check::check, syntax::TheoryBundle, theory::OperationKey};
 use open_hypergraphs::lax::{OpenHypergraph, functor::Functor};
 
-use catena::codegen::c::codegen;
+use catena::backend::c::codegen::codegen;
 use catena::lang::{Arr, Obj};
 use catena::pass::{
     discard_naturality::discard_naturality, erase::Erase, expand_eta::ExpandEta,

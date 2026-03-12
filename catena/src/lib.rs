@@ -2,5 +2,5 @@
 pub mod lang;
 pub mod pass;
 
-pub mod codegen;
+pub mod backend;
 pub mod scope;

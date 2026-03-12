@@ -80,7 +80,7 @@ fn lower_passes(
 ) -> anyhow::Result<
     Vec<(
         Pass,
-        Box<dyn Fn(&OpenHypergraph<Obj, Arr>) -> OpenHypergraph<Obj, Arr>>,
+        Box<dyn Fn(&OpenHypergraph<Obj, Arr>) -> Result<OpenHypergraph<Obj, Arr>, LowerError>>,
     )>,
 > {
     let bound_key = bundle.object_theory.get_operation_key("bound").unwrap();
@@ -88,15 +88,15 @@ fn lower_passes(
     let forget_bound = ForgetBound::new(bound_key, value_key);
 
     Ok(vec![
-        (Pass::Erase, Box::new(|t| Erase.map_arrow(t))),
+        (Pass::Erase, Box::new(|t| Ok(Erase.map_arrow(t)))),
         (
             Pass::ForgetBound,
-            Box::new(move |t| forget_bound.map_arrow(t)),
+            Box::new(move |t| Ok(forget_bound.map_arrow(t))),
         ),
-        (Pass::ExpandEta, Box::new(|t| ExpandEta.map_arrow(t))),
+        (Pass::ExpandEta, Box::new(|t| Ok(ExpandEta.map_arrow(t)))),
         (
             Pass::DiscardNaturality,
-            Box::new(|t| discard_naturality(t.clone()))?,
+            Box::new(|t| discard_naturality(t.clone()).map_err(LowerError::DiscardNaturality)),
         ),
     ])
 }
@@ -163,7 +163,7 @@ fn lower(
     // Run subsequent passes in order, stopping after the requested one
     if until != Pass::Check {
         for (pass, apply) in lower_passes(bundle)? {
-            current = apply(&current);
+            current = apply(&current)?;
             current.quotient().map_err(LowerError::InvalidQuotient)?;
             if pass == until {
                 break;

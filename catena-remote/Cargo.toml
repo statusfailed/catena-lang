@@ -1,0 +1,8 @@
+[package]
+name = "catena-remote"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+open-hypergraphs.workspace = true
+thiserror = "2.0.18"

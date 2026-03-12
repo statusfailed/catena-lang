@@ -7,6 +7,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 use hexpr::*;
+use metacat::ssa::SSAError;
 use metacat::{check::check, syntax::TheoryBundle, theory::OperationKey};
 use open_hypergraphs::lax::{OpenHypergraph, functor::Functor};
 
@@ -95,7 +96,7 @@ fn lower_passes(
         (Pass::ExpandEta, Box::new(|t| ExpandEta.map_arrow(t))),
         (
             Pass::DiscardNaturality,
-            Box::new(|t| discard_naturality(t.clone()).expect("discard_naturality failed")),
+            Box::new(|t| discard_naturality(t.clone()))?,
         ),
     ])
 }
@@ -128,17 +129,12 @@ fn inline(
 /// An error during [`lower`]ing of a term
 #[derive(Error, Debug)]
 pub enum LowerError {
+    #[error("Invalid quotient: {0:?}")]
     InvalidQuotient(FiniteFunction),
+    #[error("Unknown operation {0}")]
     UnknownOperation(String),
-}
-
-impl std::fmt::Display for LowerError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            LowerError::InvalidQuotient(ff) => write!(f, "invalid quotient: {ff:?}"),
-            LowerError::UnknownOperation(name) => write!(f, "unknown operation {name}"),
-        }
-    }
+    #[error("Discard naturality pass failed: {0}")]
+    DiscardNaturality(SSAError),
 }
 
 /// Lower a term by applying passes until the specified pass

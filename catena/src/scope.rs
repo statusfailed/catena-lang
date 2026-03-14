@@ -128,7 +128,7 @@ fn backward<O, A>(
     n: usize,
     sources: &[NodeId],
     targets: &[NodeId],
-    ssa: &Vec<SSA<O, A>>,
+    ssa: &[SSA<O, A>],
 ) -> Vec<Option<Stack>> {
     // Initialize targets to empty stacks, others to None
     // NOTE: None stands for the adjoined top element of the prefix order.

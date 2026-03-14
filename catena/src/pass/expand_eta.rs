@@ -32,7 +32,7 @@ impl Functor<Obj, Arr, Obj, Arr> for ExpandEta {
             .collect();
 
         // bound.eta ⇒ discard ; cup
-        let result = if a.to_string() == "bound.eta" {
+        if a.to_string() == "bound.eta" {
             let mut a = OpenHypergraph::identity(source);
             let mut b = OpenHypergraph::identity(target);
             a.targets = vec![];
@@ -42,8 +42,7 @@ impl Functor<Obj, Arr, Obj, Arr> for ExpandEta {
             result
         } else {
             OpenHypergraph::singleton(a.clone(), source, target)
-        };
-        result
+        }
     }
 
     fn map_arrow(

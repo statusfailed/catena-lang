@@ -14,6 +14,10 @@ use crate::pass::{
     forget_bound::ForgetBound, inline::Inline,
 };
 
+type Lowered = OpenHypergraph<Obj, Arr>;
+type LowerPassFn = dyn Fn(&Lowered) -> Result<Lowered, LowerError>;
+type LowerPass = (Pass, Box<LowerPassFn>);
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Pass {
     Check,
@@ -85,13 +89,7 @@ pub fn lower(
 /// Construct the compiler lowering passes
 fn lower_passes(
     bundle: &TheoryBundle,
-) -> Result<
-    Vec<(
-        Pass,
-        Box<dyn Fn(&OpenHypergraph<Obj, Arr>) -> Result<OpenHypergraph<Obj, Arr>, LowerError>>,
-    )>,
-    LowerError,
-> {
+) -> Result<Vec<LowerPass>, LowerError> {
     let bound_key = bundle.object_theory.get_operation_key("bound").unwrap();
     let value_key = bundle.object_theory.get_operation_key("value").unwrap();
     let forget_bound = ForgetBound::new(bound_key, value_key);

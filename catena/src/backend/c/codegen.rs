@@ -204,7 +204,7 @@ fn to_c_type(obj: &Obj) -> Result<String, CodegenError> {
 
 fn match_value_types<T: Clone>(tree: &Tree<(), OperationKey>, cases: &[(&str, T)]) -> Option<T> {
     for (name, value) in cases {
-        if match_value_type(name, &tree) {
+        if match_value_type(name, tree) {
             return Some(value.clone());
         }
     }
@@ -221,7 +221,7 @@ fn match_value_type(name: &str, tree: &Tree<(), OperationKey>) -> bool {
                 return false;
             };
 
-            return key.to_string() == name;
+            key.to_string() == name
         }
         _ => false,
     }

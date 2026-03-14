@@ -29,8 +29,7 @@ impl Functor<Obj, Arr, Obj, Arr> for ForgetBound {
         let o: Tree<_, OperationKey> = match o {
             Tree::Node(label, port, trees) => {
                 let new_label = if label == &self.bound_key {
-                    let result = self.value_key.clone();
-                    result
+                    self.value_key.clone()
                 } else {
                     label.clone()
                 };

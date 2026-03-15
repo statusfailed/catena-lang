@@ -9,5 +9,8 @@ pub mod compile;
 /// manage and run compiled catena programs
 pub mod runtime;
 
+/// low-level sandboxed process boundary for the C backend
+pub mod sandbox_ffi;
+
 pub use runtime::Runtime;
 pub use runtime::Value;

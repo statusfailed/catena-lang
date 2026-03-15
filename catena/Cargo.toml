@@ -8,6 +8,7 @@ hexpr = "0.2.0"
 metacat = { workspace = true }
 open-hypergraphs = { workspace = true }
 thiserror = "2.0.18"
+tempfile = "3.23.0"
 
 [dev-dependencies]
 anyhow = "1.0.102"

@@ -1,7 +1,7 @@
 use thiserror::Error;
 
 use super::compile::{CompileError, SharedObject};
-use super::executor::{ArgValue, CallFrame, ExecutorError};
+use super::executor::{CallFrame, ExecutorError};
 use super::value::{Value, ValueKind};
 
 /// Run catena programs with the C backend
@@ -70,19 +70,19 @@ impl Runtime {
             });
         }
 
-        let abi_inputs = collect_inputs(&args, signature)?;
-        let mut abi_outputs: Vec<AbiValue> = signature
+        let input_values = collect_inputs(&args, signature)?;
+        let mut output_values: Vec<Value> = signature
             .outputs
             .iter()
             .copied()
-            .map(AbiValue::zeroed)
+            .map(Value::zeroed)
             .collect();
 
         let mut frame_args = Vec::with_capacity(M + N);
-        for value in &abi_inputs {
+        for value in &input_values {
             frame_args.push(value.as_input_arg());
         }
-        for value in &mut abi_outputs {
+        for value in &mut output_values {
             frame_args.push(value.as_output_arg());
         }
 
@@ -94,12 +94,6 @@ impl Runtime {
             },
         )?;
 
-        let output_values: Vec<Value> = abi_outputs
-            .into_iter()
-            .zip(signature.outputs.iter().copied())
-            .map(|(value, kind)| value.into_runtime_value(kind))
-            .collect();
-
         Ok(output_values
             .try_into()
             .expect("output arity already validated"))
@@ -109,7 +103,7 @@ impl Runtime {
 fn collect_inputs<const M: usize>(
     args: &[Value; M],
     signature: &super::compile::FunctionSignature,
-) -> Result<Vec<AbiValue>, ExecError> {
+) -> Result<Vec<Value>, ExecError> {
     args.iter()
         .zip(signature.inputs.iter().copied())
         .enumerate()
@@ -119,57 +113,15 @@ fn collect_inputs<const M: usize>(
 
 // Verify that an input value has the expected kind, but does *not* check deeply (e.g., that an
 // index belongs to its declared extent.
-fn validate_input(
-    index: usize,
-    value: &Value,
-    expected: ValueKind,
-) -> Result<AbiValue, ExecError> {
+fn validate_input(index: usize, value: &Value, expected: ValueKind) -> Result<Value, ExecError> {
     match (value, expected) {
-        (Value::Extent(value), ValueKind::Extent) => Ok(AbiValue::U64(*value as u64)),
-        (Value::Index(value), ValueKind::Index) => Ok(AbiValue::U64(*value as u64)),
-        (Value::F32(value), ValueKind::F32) => Ok(AbiValue::F32(*value)),
+        (Value::Extent(value), ValueKind::Extent) => Ok(Value::Extent(*value)),
+        (Value::Index(value), ValueKind::Index) => Ok(Value::Index(*value)),
+        (Value::F32(value), ValueKind::F32) => Ok(Value::F32(*value)),
         _ => Err(ExecError::TypeMismatch {
             index,
             expected,
             actual: value.kind(),
         }),
-    }
-}
-
-#[derive(Debug)]
-enum AbiValue {
-    U64(u64),
-    F32(f32),
-}
-
-impl AbiValue {
-    fn zeroed(kind: ValueKind) -> Self {
-        match kind {
-            ValueKind::Extent | ValueKind::Index => AbiValue::U64(0),
-            ValueKind::F32 => AbiValue::F32(0.0),
-        }
-    }
-
-    fn as_input_arg(&self) -> ArgValue<'_> {
-        match self {
-            AbiValue::U64(value) => ArgValue::U64(value),
-            AbiValue::F32(value) => ArgValue::F32(value),
-        }
-    }
-
-    fn as_output_arg(&mut self) -> ArgValue<'_> {
-        match self {
-            AbiValue::U64(value) => ArgValue::OutU64(value),
-            AbiValue::F32(value) => ArgValue::OutF32(value),
-        }
-    }
-
-    fn into_runtime_value(self, kind: ValueKind) -> Value {
-        match (self, kind) {
-            (AbiValue::U64(value), ValueKind::Extent) => Value::Extent(value as usize),
-            (AbiValue::U64(value), ValueKind::Index) => Value::Index(value as usize),
-            (AbiValue::F32(value), ValueKind::F32) => Value::F32(value),
-            _ => unreachable!("compile/runtime kind mismatch"),
-        }
     }
 }

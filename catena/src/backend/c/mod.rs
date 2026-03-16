@@ -12,9 +12,13 @@ pub mod executor;
 /// manage and run compiled catena programs
 pub mod runtime;
 
+/// Public runtime value model
+pub mod value;
+
 #[cfg(test)]
 mod tests;
 
 pub use runtime::InitError;
 pub use runtime::Runtime;
-pub use runtime::Value;
+pub use value::Value;
+pub use value::ValueKind;

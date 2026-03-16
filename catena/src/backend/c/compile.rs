@@ -1,7 +1,10 @@
 //! Compile a catena program to a C shared object file.
 use crate::backend::c::codegen::codegen;
+use crate::backend::c::value::ValueKind;
+use crate::lang::Obj;
 use crate::lower::{LowerError, Pass, lower};
 use metacat::syntax::TheoryBundle;
+use metacat::tree::Tree;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitStatus};
@@ -18,6 +21,8 @@ pub enum CompileError {
         definition: String,
         source: LowerError,
     },
+    #[error("Function '{definition}' uses an unsupported runtime value type: {value}")]
+    UnsupportedRuntimeType { definition: String, value: String },
     #[error("Failed to create temporary build directory: {0}")]
     TempDir(#[from] std::io::Error),
     #[error("C compiler is unavailable: {0}")]
@@ -26,11 +31,12 @@ pub enum CompileError {
     CompilerFailed { status: ExitStatus, stderr: String },
 }
 
+/// A shared object file created by compiling a catena program
 #[derive(Debug)]
 pub(crate) struct SharedObject {
     _build_dir: tempfile::TempDir,
     path: PathBuf,
-    symbols: HashMap<String, String>,
+    signatures: HashMap<String, FunctionSignature>,
 }
 
 impl SharedObject {
@@ -38,9 +44,17 @@ impl SharedObject {
         &self.path
     }
 
-    pub(crate) fn symbol(&self, definition: &str) -> Option<&str> {
-        self.symbols.get(definition).map(String::as_str)
+    pub(crate) fn signature(&self, definition: &str) -> Option<&FunctionSignature> {
+        self.signatures.get(definition)
     }
+}
+
+/// FunctionSignature represents the input and output types to each C function.
+#[derive(Debug, Clone)]
+pub(crate) struct FunctionSignature {
+    pub(crate) symbol: String,
+    pub(crate) inputs: Vec<ValueKind>,
+    pub(crate) outputs: Vec<ValueKind>,
 }
 
 pub(crate) fn compile(source: &str) -> Result<SharedObject, CompileError> {
@@ -56,9 +70,10 @@ pub(crate) fn compile(source: &str) -> Result<SharedObject, CompileError> {
         return Err(CompileError::NoDefinitions);
     }
 
+    // Compile each definition to C, and record its function signature
     let mut translation_unit = String::from("#include <stdint.h>\n\n");
     let mut used_symbols = HashSet::new();
-    let mut symbols = HashMap::new();
+    let mut signatures = HashMap::new();
     for definition in definitions {
         let lowered = lower(&bundle, Pass::DiscardNaturality, &definition).map_err(|source| {
             CompileError::Lower {
@@ -68,18 +83,25 @@ pub(crate) fn compile(source: &str) -> Result<SharedObject, CompileError> {
         })?;
 
         let symbol = unique_symbol(&definition, &mut used_symbols);
+        let signature = FunctionSignature {
+            symbol: symbol.clone(),
+            inputs: value_kinds(&definition, &lowered.sources, &lowered.hypergraph.nodes)?,
+            outputs: value_kinds(&definition, &lowered.targets, &lowered.hypergraph.nodes)?,
+        };
         let function = codegen(lowered, &symbol);
 
         translation_unit.push_str(&function);
         translation_unit.push_str("\n\n");
-        symbols.insert(definition, symbol);
+        signatures.insert(definition, signature);
     }
 
+    // Set up temp file dirs
     let build_dir = tempfile::Builder::new().prefix("catena-c-").tempdir()?;
     let c_path = build_dir.path().join("module.c");
     let so_path = build_dir.path().join("module.so");
     std::fs::write(&c_path, translation_unit)?;
 
+    // Compile the generated C to a shared object
     let output = Command::new("cc")
         .arg("-shared")
         .arg("-fPIC")
@@ -100,9 +122,12 @@ pub(crate) fn compile(source: &str) -> Result<SharedObject, CompileError> {
     Ok(SharedObject {
         _build_dir: build_dir,
         path: so_path,
-        symbols,
+        signatures,
     })
 }
+
+////////////////////////////////////////////////////////////////////////////////
+// Symbol mangling
 
 fn unique_symbol(definition: &str, used: &mut HashSet<String>) -> String {
     let base = mangle_symbol(definition);
@@ -137,5 +162,45 @@ fn mangle_symbol(name: &str) -> String {
         "_".to_string()
     } else {
         symbol
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Type -> ValueKind
+
+fn value_kinds(
+    definition: &str,
+    interface: &[open_hypergraphs::lax::NodeId],
+    nodes: &[Obj],
+) -> Result<Vec<ValueKind>, CompileError> {
+    interface
+        .iter()
+        .map(|node_id| value_kind(definition, &nodes[node_id.0]))
+        .collect()
+}
+
+fn value_kind(definition: &str, obj: &Obj) -> Result<ValueKind, CompileError> {
+    match obj {
+        Tree::Node(val, 0, children) if val.to_string() == "value" => {
+            let [Tree::Node(key, 0, _)] = children.as_slice() else {
+                return Err(CompileError::UnsupportedRuntimeType {
+                    definition: definition.to_string(),
+                    value: obj.to_string(),
+                });
+            };
+            match key.to_string().as_str() {
+                "f32" => Ok(ValueKind::F32),
+                "index" => Ok(ValueKind::Index),
+                "extent" => Ok(ValueKind::Extent),
+                _ => Err(CompileError::UnsupportedRuntimeType {
+                    definition: definition.to_string(),
+                    value: obj.to_string(),
+                }),
+            }
+        }
+        _ => Err(CompileError::UnsupportedRuntimeType {
+            definition: definition.to_string(),
+            value: obj.to_string(),
+        }),
     }
 }

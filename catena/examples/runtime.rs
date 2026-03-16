@@ -7,22 +7,12 @@ fn main() -> anyhow::Result<()> {
     // Compiles, typechecks, and lowers the contents of 'stdlib.hex' to init the runtime.
     let runtime = Runtime::new(&std::fs::read_to_string("stdlib.hex")?)?;
 
-    // Create a runtime 'extent' value reference
-    let n = runtime.value(Value::Extent(10));
-
     // Look up a function by name and execute it.
     // Uses const generics to return fixed size array, returning error if the
     // constant size is different to the dynamically-inspected number of return
     // values of 'materialize-range'.
-    let [_result] = runtime.exec("materialize-range", [n])?;
+    let [result] = runtime.exec("f32.increment", [Value::Extent(10), Value::Index(9)])?;
+    println!("result: {result:?}");
 
-    // Check we got a memref back (expected)
-    /* later
-    match result {
-        // Cast
-        Value::Memref(bytes) => cast_and_print_as_usize_array(bytes),
-        _ => panic!("oh no!"),
-    }
-    */
     Ok(())
 }

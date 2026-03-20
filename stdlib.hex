@@ -18,7 +18,6 @@
 # Array types and runtime values
 (object extent : 1 -> 1) # extent(n):   array size n
 (object index : 1 -> 1)  # index(e):    array indices into arrays with extent e
-(object array : 2 -> 1)  # array(n, t): n elements of type t
 
 (object value : 1 -> 1)  # value(t):  runtime values of type t
 (object bound : 1 -> 1)  # bound(t):  puts the * in *-autonomous
@@ -50,13 +49,42 @@
 # Bound variables
 # In traditional syntax:
 #   η : t → (bound t ● value t)
-# 
+#
 # η takes a type metavariable, and returns:
 #   bound t : a *bound* ("backwards flowing") value
 #   value t : a runtime ("forwards flowing") value
 #
 # Think of this as 'bending' a wire from backwards to forwards.
 (arrow bound.eta : [t] -> ([t . t t] {bound value})) # Given a type, create a *bound* variable
+
+################################################################################
+# Read-only, unowned array references
+
+# `arrayref n t` represents a buffer of n elements of type t
+(object arrayref : 2 -> 1)
+
+# arrow n t → extent n
+(arrow arrayref.extent : arrayref -> ([n t.n] extent))
+
+# index an array reference
+# arrayref n t ● Ix n → value t
+(arrow arrayref.ix : {[n t.] ([.n t] arrayref value) ([.n] index value)} -> ([n t.t] value))
+
+# array n t -> value t
+(def-arrow arrayref.head : {[n t.]
+  ([.n t] arrayref value)   # given an n-element array of values t
+  ([.n] extent.nz |-)       # .. which is nonempty
+} -> ([e t.t] value)  # .. return its 0th element
+  = {[x p.]
+  ([.x] value.type arrayref.extent [e.])
+  ([.e p] index.zero [i.])
+  ([.x i] arrayref.ix)
+})
+
+# given a closure mapping indices to values, materialize it as an array
+# closure: index n → value t
+# encoding: (index n)* ● value t
+#(arrow materialize : {(index bound) value} -> array)
 
 ################################################################################
 # Array ops

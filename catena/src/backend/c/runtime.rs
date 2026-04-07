@@ -74,7 +74,7 @@ impl Runtime {
         let mut output_values: Vec<Value> = signature
             .outputs
             .iter()
-            .copied()
+            .cloned()
             .map(Value::zeroed)
             .collect();
 
@@ -105,7 +105,7 @@ fn collect_inputs<const M: usize>(
     signature: &super::compile::FunctionSignature,
 ) -> Result<Vec<Value>, ExecError> {
     args.iter()
-        .zip(signature.inputs.iter().copied())
+        .zip(signature.inputs.iter().cloned())
         .enumerate()
         .map(|(index, (value, expected))| validate_input(index, value, expected))
         .collect()
@@ -114,10 +114,17 @@ fn collect_inputs<const M: usize>(
 // Verify that an input value has the expected kind, but does *not* check deeply (e.g., that an
 // index belongs to its declared extent.
 fn validate_input(index: usize, value: &Value, expected: ValueKind) -> Result<Value, ExecError> {
-    match (value, expected) {
+    match (value, &expected) {
         (Value::Extent(value), ValueKind::Extent) => Ok(Value::Extent(*value)),
         (Value::Index(value), ValueKind::Index) => Ok(Value::Index(*value)),
         (Value::F32(value), ValueKind::F32) => Ok(Value::F32(*value)),
+        (
+            Value::ArrayRef { ptr, element },
+            ValueKind::ArrayRef(expected_element),
+        ) if **element == **expected_element => Ok(Value::ArrayRef {
+            ptr: *ptr,
+            element: element.clone(),
+        }),
         _ => Err(ExecError::TypeMismatch {
             index,
             expected,

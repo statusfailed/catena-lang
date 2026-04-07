@@ -23,6 +23,8 @@ pub enum CompileError {
     },
     #[error("Function '{definition}' uses an unsupported runtime value type: {value}")]
     UnsupportedRuntimeType { definition: String, value: String },
+    #[error("Definition '{definition}' had value {value} with unexpected arity")]
+    ArityError { definition: String, value: String },
     #[error("Failed to create temporary build directory: {0}")]
     TempDir(#[from] std::io::Error),
     #[error("C compiler is unavailable: {0}")]
@@ -182,21 +184,44 @@ fn value_kinds(
 fn value_kind(definition: &str, obj: &Obj) -> Result<ValueKind, CompileError> {
     match obj {
         Tree::Node(val, 0, children) if val.to_string() == "value" => {
-            let [Tree::Node(key, 0, _)] = children.as_slice() else {
+            let [inner] = children.as_slice() else {
                 return Err(CompileError::UnsupportedRuntimeType {
                     definition: definition.to_string(),
                     value: obj.to_string(),
                 });
             };
-            match key.to_string().as_str() {
-                "f32" => Ok(ValueKind::F32),
-                "index" => Ok(ValueKind::Index),
-                "extent" => Ok(ValueKind::Extent),
-                _ => Err(CompileError::UnsupportedRuntimeType {
+            type_value_kind(definition, inner).map_err(|error| match error {
+                CompileError::UnsupportedRuntimeType { .. } => {
+                    CompileError::UnsupportedRuntimeType {
+                        definition: definition.to_string(),
+                        value: obj.to_string(),
+                    }
+                }
+                other => other,
+            })
+        }
+        _ => Err(CompileError::UnsupportedRuntimeType {
+            definition: definition.to_string(),
+            value: obj.to_string(),
+        }),
+    }
+}
+
+fn type_value_kind(definition: &str, obj: &Obj) -> Result<ValueKind, CompileError> {
+    match obj {
+        Tree::Node(key, 0, _) if key.to_string() == "f32" => Ok(ValueKind::F32),
+        Tree::Node(key, 0, _) if key.to_string() == "index" => Ok(ValueKind::Index),
+        Tree::Node(key, 0, _) if key.to_string() == "extent" => Ok(ValueKind::Extent),
+        Tree::Node(key, 0, children) if key.to_string() == "arrayref" => {
+            let [_, element] = children.as_slice() else {
+                return Err(CompileError::ArityError {
                     definition: definition.to_string(),
                     value: obj.to_string(),
-                }),
-            }
+                });
+            };
+            Ok(ValueKind::ArrayRef(Box::new(type_value_kind(
+                definition, element,
+            )?)))
         }
         _ => Err(CompileError::UnsupportedRuntimeType {
             definition: definition.to_string(),

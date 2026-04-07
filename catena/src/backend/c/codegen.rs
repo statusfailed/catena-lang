@@ -125,6 +125,14 @@ pub fn render_c(
             let t0 = &op.targets[0].0.0;
             format!("float v{t0} = (float) v{s0}; // f32.from-index")
         }
+        "arrayref.ix" => {
+            let s0 = &op.sources[0].0.0;
+            let s1 = &op.sources[1].0.0;
+            let t0 = &op.targets[0].0.0;
+            let target_obj = &op.targets[0].1;
+            let ty = to_c_type(target_obj).unwrap();
+            format!("{ty} v{t0} = v{s0}[v{s1}]; // arrayref.ix")
+        }
         "reduce" => {
             // Sources: [Extent, Zero, Acc, Val, Combined, Index*, Body]
             let extent = &op.sources[0].0.0;
@@ -190,39 +198,33 @@ pub fn render_c(
 // NOTE: this is quite limited, and will only work for types of the form value(<name>(...)).
 // But it's sufficient for now.
 fn to_c_type(obj: &Obj) -> Result<String, CodegenError> {
-    match_value_types(
-        obj,
-        &[
-            ("f32", "float"),
-            ("index", "uint64_t"),
-            ("extent", "uint64_t"),
-        ],
-    )
-    .map(|x| x.to_string())
-    .ok_or_else(|| CodegenError::NoCType(obj.clone()))
+    value_c_type(obj).ok_or_else(|| CodegenError::NoCType(obj.clone()))
 }
 
-fn match_value_types<T: Clone>(tree: &Tree<(), OperationKey>, cases: &[(&str, T)]) -> Option<T> {
-    for (name, value) in cases {
-        if match_value_type(name, tree) {
-            return Some(value.clone());
-        }
-    }
-    None
-}
-
-// Match any tree of the form π0(value(π0(<name>(...))))
-fn match_value_type(name: &str, tree: &Tree<(), OperationKey>) -> bool {
-    // Top level must be a 'value' node
+fn value_c_type(tree: &Tree<(), OperationKey>) -> Option<String> {
     match tree {
         Tree::Node(val, 0, children) if val.to_string() == "value" => {
-            // match a single child
-            let [Tree::Node(key, 0, _)] = children.as_slice() else {
-                return false;
+            let [inner] = children.as_slice() else {
+                return None;
             };
-
-            key.to_string() == name
+            type_c_type(inner)
         }
-        _ => false,
+        _ => None,
+    }
+}
+
+fn type_c_type(tree: &Tree<(), OperationKey>) -> Option<String> {
+    match tree {
+        Tree::Node(key, 0, _) if key.to_string() == "f32" => Some("float".to_string()),
+        Tree::Node(key, 0, _) if key.to_string() == "index" => Some("uint64_t".to_string()),
+        Tree::Node(key, 0, _) if key.to_string() == "extent" => Some("uint64_t".to_string()),
+        Tree::Node(key, 0, children) if key.to_string() == "arrayref" => {
+            let [_, element] = children.as_slice() else {
+                return None;
+            };
+            let element_type = type_c_type(element)?;
+            Some(format!("{element_type}*"))
+        }
+        _ => None,
     }
 }

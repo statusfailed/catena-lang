@@ -1,5 +1,4 @@
-//! Erase type-level operations
-
+//! Erase operations which are entirely type level
 use crate::lang::{Arr, Obj, is_value};
 use open_hypergraphs::lax::{
     OpenHypergraph,

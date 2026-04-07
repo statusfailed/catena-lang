@@ -49,6 +49,23 @@ fn executor_calls_u64_and_f32_symbols() -> Result<(), Box<dyn std::error::Error>
     )?;
     assert!((product - 3.375).abs() < f32::EPSILON);
 
+    let values = [10.0f32, 20.5, 30.25, 40.75];
+    let index = 2u64;
+    let mut selected = 0.0f32;
+    let mut ptr_args = [
+        ArgValue::Ptr(values.as_ptr().cast()),
+        ArgValue::U64(&index),
+        ArgValue::OutF32(&mut selected),
+    ];
+    exec(
+        &so_path,
+        "ix_f32",
+        CallFrame {
+            args: &mut ptr_args,
+        },
+    )?;
+    assert!((selected - 30.25).abs() < f32::EPSILON);
+
     Ok(())
 }
 
@@ -90,6 +107,10 @@ fn test_c_source() -> &'static str {
 
     void mul_f32(float x, float y, float* out) {
         *out = x * y;
+    }
+
+    void ix_f32(const float* xs, uint64_t index, float* out) {
+        *out = xs[index];
     }
     "#
 }

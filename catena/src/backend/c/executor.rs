@@ -11,12 +11,14 @@ use thiserror::Error;
 pub enum ArgType {
     U64,
     F32,
+    Ptr,
 }
 
 #[derive(Debug)]
 pub enum ArgValue<'a> {
     U64(&'a u64),
     F32(&'a f32),
+    Ptr(*const c_void),
     OutU64(&'a mut u64),
     OutF32(&'a mut f32),
 }
@@ -26,6 +28,7 @@ impl ArgValue<'_> {
         match self {
             ArgValue::U64(_) | ArgValue::OutU64(_) => ArgType::U64,
             ArgValue::F32(_) | ArgValue::OutF32(_) => ArgType::F32,
+            ArgValue::Ptr(_) => ArgType::Ptr,
         }
     }
 
@@ -76,6 +79,7 @@ pub(crate) fn exec(
         match arg {
             ArgValue::U64(_) => types.push(Type::u64()),
             ArgValue::F32(_) => types.push(Type::f32()),
+            ArgValue::Ptr(_) => types.push(Type::pointer()),
             ArgValue::OutU64(slot) => {
                 types.push(Type::pointer());
                 pointer_args.push((*slot as *mut u64).cast::<c_void>());
@@ -95,6 +99,7 @@ pub(crate) fn exec(
         .map(|arg| match arg {
             ArgValue::U64(value) => Arg::new(*value),
             ArgValue::F32(value) => Arg::new(*value),
+            ArgValue::Ptr(ptr) => Arg::new(ptr),
             ArgValue::OutU64(_) | ArgValue::OutF32(_) => {
                 let ptr = &pointer_args[pointer_index];
                 pointer_index += 1;

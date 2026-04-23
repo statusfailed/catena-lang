@@ -1,10 +1,13 @@
 use catena::lower::{Pass, lower};
 
+use colored::*;
 use clap::{Parser, Subcommand, ValueEnum};
+use open_hypergraphs::lax::OpenHypergraph;
 use std::path::PathBuf;
 
 use catena::backend::c::codegen::codegen;
-use metacat::{syntax::TheoryBundle, theory::OperationKey};
+use hexpr::try_interpret;
+use metacat::{check::check, syntax::TheoryBundle, theory::OperationKey};
 
 #[derive(Parser)]
 #[command(name = "catena", version=env!("CARGO_PKG_VERSION"))]
@@ -16,6 +19,12 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Check all definitions in a source file
+    Check {
+        #[arg()]
+        path: PathBuf,
+    },
+
     /// Run codegen for a given pass
     Codegen {
         #[arg()]
@@ -60,6 +69,7 @@ fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
+        Command::Check { path } => check_file(path),
         Command::Codegen { path, definition } => {
             let bundle = TheoryBundle::from_file(path)?;
             let lowered = lower(&bundle, Pass::DiscardNaturality, &definition)?;
@@ -72,6 +82,51 @@ fn main() -> anyhow::Result<()> {
             definition,
         } => lower_command(TheoryBundle::from_file(path)?, pass.into(), &definition),
     }
+}
+
+fn check_file(path: PathBuf) -> anyhow::Result<()> {
+    let TheoryBundle {
+        object_theory,
+        arrow_theory,
+        definitions,
+        ..
+    } = TheoryBundle::from_file(path)?;
+
+    for declaration in definitions.values() {
+        let def_hexpr = declaration.definition.as_ref().unwrap();
+
+        let mut term = forget_labels(try_interpret(&arrow_theory, def_hexpr)?);
+        let source = forget_labels(try_interpret(&object_theory, &declaration.source_map)?);
+        let target = forget_labels(try_interpret(&object_theory, &declaration.target_map)?);
+
+        match check(&arrow_theory, source, target, &mut term) {
+            Ok(_) => {
+                println!(
+                    "{} {} : {} -> {}",
+                    "[✓]".green(),
+                    declaration.name,
+                    declaration.source_map,
+                    declaration.target_map
+                );
+            }
+            Err(e) => {
+                println!(
+                    "{} {} : {} -> {}",
+                    "[✗]".red(),
+                    declaration.name,
+                    declaration.source_map,
+                    declaration.target_map
+                );
+                println!("Checking '{}' failed: {}", declaration.name, e);
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn forget_labels<O, A>(f: OpenHypergraph<O, A>) -> OpenHypergraph<(), A> {
+    f.map_nodes(|_| ())
 }
 
 fn lower_command(bundle: TheoryBundle, until: Pass, definition: &str) -> anyhow::Result<()> {

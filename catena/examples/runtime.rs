@@ -14,5 +14,20 @@ fn main() -> anyhow::Result<()> {
     let [result] = runtime.exec("sum-range-f32", [Value::Extent(10)])?;
     println!("result: {result:?}");
 
+    //let [zero] = runtime.exec("index.zero", [])?;
+    //println!("zero: {zero:?}");
+
+    /*
+    let values = [1.0f32, 2.0, 3.0, 4.0];
+    let [head] = runtime.exec(
+        "arrayref.head",
+        [Value::ArrayRef {
+            ptr: values.as_ptr().cast(),
+            element: Box::new(ValueKind::F32),
+        }],
+    )?;
+    println!("head: {head:?}");
+    */
+
     Ok(())
 }

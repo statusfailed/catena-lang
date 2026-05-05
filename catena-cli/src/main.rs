@@ -1,16 +1,16 @@
-use catena::lower::{Pass, lower};
-use catena::shallow::shallow_graph;
+mod compile_check_report;
+mod compile_graph_render;
+mod hexpr_render;
 
-use clap::{Parser, Subcommand, ValueEnum};
 use std::path::PathBuf;
 
-use catena::backend::c::codegen::codegen;
-use catena::lang::Obj;
-use catena::structured::structured_from_shallow;
-use metacat::{syntax::TheoryBundle, theory::OperationKey};
+use catena::compile::{
+    CompileConfig, check_compile_theories, compile_graph, load_extended_theory_set_from_text,
+};
+use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
-#[command(name = "catena", version=env!("CARGO_PKG_VERSION"))]
+#[command(name = "catena", version = env!("CARGO_PKG_VERSION"))]
 #[command(about = "catena compiler")]
 struct Cli {
     #[command(subcommand)]
@@ -19,175 +19,101 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
-    /// Run codegen for a given pass
-    Codegen {
+    /// Check a multi-theory hex file with metacat/Catena compile checks
+    Check {
         #[arg()]
         path: PathBuf,
-        #[arg()]
-        definition: String,
-    },
 
-    /// Run compiler passes up to the given pass and output SVG
-    Lower {
-        #[arg()]
-        pass: PassArg,
-        #[arg()]
-        path: PathBuf,
-        #[arg()]
-        definition: String,
-    },
-
-    /// Check one definition and output its graph without inlining called arrows
-    ShallowGraph {
-        /// Emit the shallow hypergraph as SVG instead of structured code
         #[arg(long)]
-        svg: bool,
+        verbose: bool,
+    },
 
-        /// Emit structured IR instead of C
-        #[arg(long)]
-        ir: bool,
-
-        /// Select shallow output format
-        #[arg(long, value_enum, default_value_t = ShallowOutput::Cuda)]
-        output: ShallowOutput,
-
-        /// CUDA tile size used by CUDA output modes
-        #[arg(long, default_value_t = 16)]
-        tile: usize,
-
-        #[arg()]
-        path: PathBuf,
-        #[arg()]
-        definition: String,
+    /// Run the Catena compile pipeline
+    Compile {
+        #[command(subcommand)]
+        command: CompileCommand,
     },
 }
 
-#[derive(Clone, Copy, Debug, ValueEnum)]
-enum PassArg {
-    Check,
-    Erase,
-    ForgetBound,
-    ExpandEta,
-    DiscardNaturality,
-}
+#[derive(Subcommand)]
+enum CompileCommand {
+    /// Check data/control theories after Catena lift passes
+    Check {
+        #[arg()]
+        path: PathBuf,
 
-#[derive(Clone, Copy, Debug, ValueEnum)]
-enum ShallowOutput {
-    Ir,
-    Cuda,
-    CudaWithLaunch,
-    Svg,
-}
+        #[arg(long)]
+        verbose: bool,
+    },
 
-impl From<PassArg> for Pass {
-    fn from(value: PassArg) -> Self {
-        match value {
-            PassArg::Check => Pass::Check,
-            PassArg::Erase => Pass::Erase,
-            PassArg::ForgetBound => Pass::ForgetBound,
-            PassArg::ExpandEta => Pass::ExpandEta,
-            PassArg::DiscardNaturality => Pass::DiscardNaturality,
-        }
-    }
+    /// Render one compile graph as SVG, inlining only same-theory definitions
+    Graph {
+        #[arg()]
+        path: PathBuf,
+
+        #[arg(long)]
+        theory: String,
+
+        #[arg()]
+        definition: String,
+
+        /// Write SVG to a file instead of stdout
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+    },
 }
 
 fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        Command::Codegen { path, definition } => {
-            let bundle = TheoryBundle::from_file(path)?;
-            let lowered = lower(&bundle, Pass::DiscardNaturality, &definition)?;
-            println!("{}", codegen(lowered, "out"));
-            Ok(())
-        }
-        Command::Lower {
+        Command::Check { path, verbose } => compile_check_command(path, verbose),
+        Command::Compile { command } => compile_command(command),
+    }
+}
+
+fn compile_command(command: CompileCommand) -> anyhow::Result<()> {
+    match command {
+        CompileCommand::Check { path, verbose } => compile_check_command(path, verbose),
+        CompileCommand::Graph {
             path,
-            pass,
+            theory,
             definition,
-        } => lower_command(TheoryBundle::from_file(path)?, pass.into(), &definition),
-        Command::ShallowGraph {
-            svg,
-            ir,
             output,
-            tile,
-            path,
-            definition,
-        } => shallow_graph_command(
-            TheoryBundle::from_file(path)?,
-            &definition,
-            if svg {
-                ShallowOutput::Svg
-            } else if ir {
-                ShallowOutput::Ir
-            } else {
-                output
-            },
-            tile,
-        ),
+        } => compile_graph_command(path, &theory, &definition, output),
     }
 }
 
-fn lower_command(bundle: TheoryBundle, until: Pass, definition: &str) -> anyhow::Result<()> {
-    let current = lower(&bundle, until, definition)?;
-    print_svg(&bundle, current)
+fn compile_check_command(path: PathBuf, verbose: bool) -> anyhow::Result<()> {
+    let path_display = path.display().to_string();
+    let source = std::fs::read_to_string(path)?;
+    let config = CompileConfig::data_control();
+    let theory_set = load_extended_theory_set_from_text(&source, &config)?;
+    let report = check_compile_theories(&theory_set, &config)?;
+
+    compile_check_report::print_compile_check_report(&path_display, &report, verbose);
+    Ok(())
 }
 
-fn shallow_graph_command(
-    bundle: TheoryBundle,
+fn compile_graph_command(
+    path: PathBuf,
+    theory: &str,
     definition: &str,
-    output: ShallowOutput,
-    tile: usize,
+    output: Option<PathBuf>,
 ) -> anyhow::Result<()> {
-    let current = shallow_graph(&bundle, definition)?;
-    if matches!(output, ShallowOutput::Cuda | ShallowOutput::CudaWithLaunch) && tile == 0 {
-        anyhow::bail!("--tile must be greater than zero");
-    }
+    let source = std::fs::read_to_string(path)?;
+    let config = CompileConfig::data_control();
+    let theory_set = load_extended_theory_set_from_text(&source, &config)?;
+    let graph = compile_graph(&theory_set, &config, theory, definition)?;
+    let svg = compile_graph_render::nested_svg(&graph)?;
+
     match output {
-        ShallowOutput::Svg => print_svg(&bundle, current),
-        ShallowOutput::Ir => {
-            let program = structured_from_shallow(&current, definition)?;
-            print!("{}", program.render_ir());
-            Ok(())
-        }
-        ShallowOutput::Cuda => {
-            let program = structured_from_shallow(&current, definition)?;
-            print!("{}", program.render_c_with_tile(tile)?);
-            Ok(())
-        }
-        ShallowOutput::CudaWithLaunch => {
-            let program = structured_from_shallow(&current, definition)?;
-            print!("{}", program.render_cuda_with_launch_with_tile(tile)?);
-            Ok(())
+        Some(output) => std::fs::write(output, svg)?,
+        None => {
+            use std::io::Write;
+            std::io::stdout().write_all(&svg)?;
         }
     }
-}
-
-fn print_svg(
-    bundle: &TheoryBundle,
-    current: open_hypergraphs::lax::OpenHypergraph<Obj, OperationKey>,
-) -> anyhow::Result<()> {
-    // Pretty-print
-    let coarity =
-        |op: &OperationKey| -> usize { bundle.object_theory.type_maps(op).1.targets.len() };
-
-    let labels: Vec<String> = current
-        .hypergraph
-        .nodes
-        .iter()
-        .map(|n| n.pretty(Some(&coarity)))
-        .collect();
-
-    use open_hypergraphs_dot::{Options, svg::to_svg_with};
-    use std::io::Write;
-
-    let opts = Options::default().display();
-    std::io::stdout().write_all(&to_svg_with(
-        &current
-            .with_nodes(|_| labels)
-            .expect("labels length mismatch"),
-        &opts,
-    )?)?;
 
     Ok(())
 }

@@ -3,7 +3,7 @@ use crate::backend::c::codegen::codegen;
 use crate::backend::c::value::ValueKind;
 use crate::lang::Obj;
 use crate::lower::{LowerError, Pass, lower};
-use metacat::syntax::TheoryBundle;
+use metacat::theory::Theory;
 use metacat::tree::Tree;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -13,7 +13,7 @@ use thiserror::Error;
 #[derive(Debug, Error)]
 pub enum CompileError {
     #[error("Failed to parse program: {0}")]
-    Parse(#[from] metacat::syntax::LoadError),
+    Parse(#[from] metacat::theory::load::LoadError),
     #[error("No def-arrow declarations found to compile")]
     NoDefinitions,
     #[error("Failed to lower definition '{definition}': {source}")]
@@ -21,8 +21,8 @@ pub enum CompileError {
         definition: String,
         source: LowerError,
     },
-    #[error("Function '{definition}' uses an unsupported runtime value type: {value}")]
-    UnsupportedRuntimeType { definition: String, value: String },
+    #[error("Function '{definition}' uses an unsupported runtime value type: {value:?}")]
+    UnsupportedRuntimeType { definition: String, value: Obj },
     #[error("Failed to create temporary build directory: {0}")]
     TempDir(#[from] std::io::Error),
     #[error("C compiler is unavailable: {0}")]
@@ -57,14 +57,15 @@ pub(crate) struct FunctionSignature {
     pub(crate) outputs: Vec<ValueKind>,
 }
 
-pub(crate) fn compile(source: &str) -> Result<SharedObject, CompileError> {
-    let bundle = TheoryBundle::from_text(source)?;
-
-    let mut definitions: Vec<String> = bundle
-        .definitions
-        .keys()
-        .map(|definition| definition.as_str().to_string())
-        .collect();
+pub(crate) fn compile(theory: &Theory) -> Result<SharedObject, CompileError> {
+    let mut definitions: Vec<String> = match theory {
+        Theory::Nat => Vec::new(),
+        Theory::Theory { arrows, .. } => arrows
+            .iter()
+            .filter(|(_, arrow)| arrow.definition.is_some())
+            .map(|(definition, _)| definition.as_str().to_string())
+            .collect(),
+    };
     definitions.sort();
     if definitions.is_empty() {
         return Err(CompileError::NoDefinitions);
@@ -75,7 +76,7 @@ pub(crate) fn compile(source: &str) -> Result<SharedObject, CompileError> {
     let mut used_symbols = HashSet::new();
     let mut signatures = HashMap::new();
     for definition in definitions {
-        let lowered = lower(&bundle, Pass::DiscardNaturality, &definition).map_err(|source| {
+        let lowered = lower(theory, Pass::DiscardNaturality, &definition).map_err(|source| {
             CompileError::Lower {
                 definition: definition.clone(),
                 source,
@@ -181,26 +182,26 @@ fn value_kinds(
 
 fn value_kind(definition: &str, obj: &Obj) -> Result<ValueKind, CompileError> {
     match obj {
-        Tree::Node(val, 0, children) if val.to_string() == "value" => {
+        Tree::Node(val, 0, children) if val.as_str() == "value" => {
             let [Tree::Node(key, 0, _)] = children.as_slice() else {
                 return Err(CompileError::UnsupportedRuntimeType {
                     definition: definition.to_string(),
-                    value: obj.to_string(),
+                    value: obj.clone(),
                 });
             };
-            match key.to_string().as_str() {
+            match key.as_str() {
                 "f32" => Ok(ValueKind::F32),
                 "index" => Ok(ValueKind::Index),
                 "extent" => Ok(ValueKind::Extent),
                 _ => Err(CompileError::UnsupportedRuntimeType {
                     definition: definition.to_string(),
-                    value: obj.to_string(),
+                    value: obj.clone(),
                 }),
             }
         }
         _ => Err(CompileError::UnsupportedRuntimeType {
             definition: definition.to_string(),
-            value: obj.to_string(),
+            value: obj.clone(),
         }),
     }
 }

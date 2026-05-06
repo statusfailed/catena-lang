@@ -42,13 +42,21 @@ pub fn open_hypergraph_to_hexpr(mut f: OpenHypergraph<(), Operation>) -> Hexpr {
         if !adjacency.sources.is_empty() {
             parts.push(spider(
                 vec![],
-                adjacency.sources.iter().map(|node| node_var(*node)).collect(),
+                adjacency
+                    .sources
+                    .iter()
+                    .map(|node| node_var(*node))
+                    .collect(),
             ));
         }
         parts.push(Hexpr::Operation(edge));
         if !adjacency.targets.is_empty() {
             parts.push(spider(
-                adjacency.targets.iter().map(|node| node_var(*node)).collect(),
+                adjacency
+                    .targets
+                    .iter()
+                    .map(|node| node_var(*node))
+                    .collect(),
                 vec![],
             ));
         }

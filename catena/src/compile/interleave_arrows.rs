@@ -301,6 +301,12 @@ mod tests {
         };
         let arrow = arrows.get(&op(arrow_name)).unwrap();
         let mut body = arrow.definition.clone().expect("expected definition");
-        check(theory, arrow.type_maps.0.clone(), arrow.type_maps.1.clone(), &mut body).unwrap();
+        check(
+            theory,
+            arrow.type_maps.0.clone(),
+            arrow.type_maps.1.clone(),
+            &mut body,
+        )
+        .unwrap();
     }
 }

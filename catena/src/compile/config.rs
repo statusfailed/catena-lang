@@ -36,15 +36,6 @@ impl CompileConfig {
         }
     }
 
-    pub fn extensions_for_target<'a>(
-        &'a self,
-        target: &'a str,
-    ) -> impl Iterator<Item = &'a TheoryExtension> {
-        self.extensions
-            .iter()
-            .filter(move |extension| extension.target == target)
-    }
-
     pub fn extension_for_target_and_prefix(
         &self,
         target: &str,
@@ -53,12 +44,5 @@ impl CompileConfig {
         self.extensions
             .iter()
             .find(|extension| extension.target == target && extension.prefix == prefix)
-    }
-
-    pub fn lifted_prefixes(&self) -> Vec<&'static str> {
-        self.extensions
-            .iter()
-            .map(|extension| extension.prefix)
-            .collect()
     }
 }

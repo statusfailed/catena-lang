@@ -1,14 +1,4 @@
-////////////////////////////////////////
-// we're going to quickly sketch the new 'check' interface in this file before moving it
-
-// Intended compiler structure:
-//
-//  - elaborate_and_check (runs all below)
-//    - Interpret syntax: pulls out syntax theory alone and interprets it; requires pulling out dependency theories too.
-//    - Interleave: uses interpreted syntax to run `interleave` from compile/interleave_arrows, mutating RawTheorySet with control/data theories
-//    - Interpret all: get TheorySet for all (augmented) theories
-//    - `check_all`: for each theory, run check_definitions
-//        - check_definitions: checks each *definition* in a supplied theory over the given syntax theory
+//! Typechecking and elaboration-by-interleaving of theories
 use metacat::{
     check::check as metacat_check,
     theory::{RawTheorySet, Theory, TheoryId, TheorySet},

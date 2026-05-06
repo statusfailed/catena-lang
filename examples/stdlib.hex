@@ -32,4 +32,6 @@
 (theory control syntax {
   (arr merge : [x . x x] -> [x])
   (arr never : [x.] -> [x])
+
+  (def test : ({f32 f32} *) -> f32 = data.f32.add)
 })

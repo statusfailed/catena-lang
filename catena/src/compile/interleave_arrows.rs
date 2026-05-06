@@ -1,3 +1,4 @@
+//!G
 //! Mutually interleave the two "control" and "data" theories by adding "product-packed" data
 //! arrows to control, and "coproduct-packed" control arrows to data.
 //!
@@ -13,7 +14,8 @@
 //!   (arr 0 : 0 -> 1)
 //!
 //!   # Builtin dtype definitions
-//!   (def f32 : 0 -> 1 = (32 bitvec))
+//!   (arr f32 : 0 -> 1)
+//!   (arr bool : 0 -> 1)
 //! })
 //!
 //! # define the "data theory" (in this example, we just have one dataflow map)
@@ -167,9 +169,7 @@ fn pack(object_size: usize, tensor: Operation, unit: Operation) -> Hexpr {
     open_hypergraph_to_hexpr(packed)
 }
 
-// Have: interpreted and raw type maps for a given arrow
-// Want:
-
+// Compute the composition of a type map with its corresponding 'pack' morphism
 fn pack_type_map(map: &Hexpr, syntax: &Theory, tensor: &Operation, unit: &Operation) -> Hexpr {
     let interpreted = hexpr::try_interpret(&syntax.local_signature(), map)
         .expect("type map should interpret in the resolved syntax theory");
@@ -182,131 +182,39 @@ fn pack_type_map(map: &Hexpr, syntax: &Theory, tensor: &Operation, unit: &Operat
 #[cfg(test)]
 mod tests {
     use super::*;
-    use metacat::{
-        check::check,
-        theory::{Theory, TheoryId, TheorySet},
-    };
+    use metacat::theory::RawTheorySet;
 
     #[test]
     fn interleaved_arrows_typecheck_in_both_directions() {
         let source = r#"
         (theory syntax nat {
-          (arr flag : 0 -> 1)
-          (arr f32 : 0 -> 1)
           (arr * : 2 -> 1)
           (arr 1 : 0 -> 1)
           (arr + : 2 -> 1)
           (arr 0 : 0 -> 1)
+          (arr f32 : 0 -> 1)
         })
 
         (theory data syntax {
           (arr f32.add : {f32 f32} -> f32)
+
+          # after interleaving, this should typecheck
+          (def merge : ({1 1} +) -> 1 = control.merge)
+
         })
 
         (theory control syntax {
-          (arr branch : flag -> {f32 f32})
-          (def id : f32 -> f32 = [x0])
+            (arr merge : ({1 1} +) -> 1)
+
+            # after interleaving, this should typecheck
+            (def expected : ({f32 f32} *) -> f32 = data.f32.add)
         })
         "#;
 
-        let scaffold = TheorySet::from_text(source).unwrap();
-        let syntax = scaffold
-            .theories
-            .get(&TheoryId("syntax".parse().unwrap()))
-            .unwrap();
         let mut raw = RawTheorySet::from_text(source).unwrap();
-
-        interleave(syntax, &mut raw);
-
-        let control = raw.theories.get_mut(&op("control")).unwrap();
-        let data_add = control.arrows.get(&op("data.f32.add")).unwrap().clone();
-        control.arrows.insert(
-            op("use_data_add"),
-            RawTheoryArrow {
-                name: op("use_data_add"),
-                type_maps: data_add.type_maps.clone(),
-                definition: Some(Hexpr::Operation(op("data.f32.add"))),
-            },
-        );
-
-        let data = raw.theories.get_mut(&op("data")).unwrap();
-        let branch = data.arrows.get(&op("control.branch")).unwrap().clone();
-        let control_id = data.arrows.get(&op("control.id")).unwrap().clone();
-        data.arrows.insert(
-            op("use_branch"),
-            RawTheoryArrow {
-                name: op("use_branch"),
-                type_maps: branch.type_maps.clone(),
-                definition: Some(Hexpr::Operation(op("control.branch"))),
-            },
-        );
-        data.arrows.insert(
-            op("use_control_id"),
-            RawTheoryArrow {
-                name: op("use_control_id"),
-                type_maps: control_id.type_maps.clone(),
-                definition: Some(Hexpr::Operation(op("control.id"))),
-            },
-        );
-
-        let loaded = TheorySet::from_text(&render_raw_theory_set(&raw)).unwrap();
-        assert_definition_typechecks(&loaded, "control", "use_data_add");
-        assert_definition_typechecks(&loaded, "data", "use_branch");
-        assert_definition_typechecks(&loaded, "data", "use_control_id");
-    }
-
-    fn op(name: &str) -> Operation {
-        name.parse().unwrap()
-    }
-
-    fn render_raw_theory_set(raw: &RawTheorySet) -> String {
-        raw.theories
-            .values()
-            .map(render_raw_theory)
-            .collect::<Vec<_>>()
-            .join("\n\n")
-    }
-
-    fn render_raw_theory(theory: &RawTheory) -> String {
-        let declarations = theory
-            .arrows
-            .values()
-            .map(render_raw_arrow)
-            .collect::<Vec<_>>()
-            .join("\n");
-        format!(
-            "(theory {} {} {{\n{}\n}})",
-            theory.name, theory.syntax_category, declarations
-        )
-    }
-
-    fn render_raw_arrow(arrow: &RawTheoryArrow) -> String {
-        match &arrow.definition {
-            Some(definition) => format!(
-                "  (def {} : {} -> {} = {})",
-                arrow.name, arrow.type_maps.0, arrow.type_maps.1, definition
-            ),
-            None => format!(
-                "  (arr {} : {} -> {})",
-                arrow.name, arrow.type_maps.0, arrow.type_maps.1
-            ),
-        }
-    }
-
-    fn assert_definition_typechecks(theories: &TheorySet, theory_name: &str, arrow_name: &str) {
-        let theory_id = TheoryId(op(theory_name));
-        let theory = theories.theories.get(&theory_id).unwrap();
-        let Theory::Theory { arrows, .. } = theory else {
-            panic!("expected user theory");
-        };
-        let arrow = arrows.get(&op(arrow_name)).unwrap();
-        let mut body = arrow.definition.clone().expect("expected definition");
-        check(
-            theory,
-            arrow.type_maps.0.clone(),
-            arrow.type_maps.1.clone(),
-            &mut body,
-        )
-        .unwrap();
+        let syntax = crate::check::interpret_syntax(&raw).unwrap();
+        interleave(&syntax, &mut raw);
+        let elaborated = crate::check::interpret_all(&raw).unwrap();
+        crate::check::check_all(&elaborated).unwrap();
     }
 }

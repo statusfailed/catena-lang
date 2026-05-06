@@ -9,3 +9,5 @@ pub mod render_hexpr;
 pub mod scope;
 pub mod shallow;
 pub mod structured;
+
+pub mod check;

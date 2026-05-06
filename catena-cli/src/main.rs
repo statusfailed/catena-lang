@@ -1,13 +1,13 @@
-mod compile_check_report;
 mod compile_graph_render;
-mod hexpr_render;
 
 use std::path::PathBuf;
 
-use catena::compile::{
-    CompileConfig, check_compile_theories, compile_graph, load_extended_theory_set_from_text,
+use catena::{
+    check::elaborate_and_check,
+    compile::{CompileConfig, compile_graph, load_extended_theory_set_from_text},
 };
 use clap::{Parser, Subcommand};
+use metacat::theory::RawTheorySet;
 
 #[derive(Parser)]
 #[command(name = "catena", version = env!("CARGO_PKG_VERSION"))]
@@ -37,15 +37,6 @@ enum Command {
 
 #[derive(Subcommand)]
 enum CompileCommand {
-    /// Check data/control theories after Catena lift passes
-    Check {
-        #[arg()]
-        path: PathBuf,
-
-        #[arg(long)]
-        verbose: bool,
-    },
-
     /// Render one compile graph as SVG, inlining only same-theory definitions
     Graph {
         #[arg()]
@@ -74,7 +65,6 @@ fn main() -> anyhow::Result<()> {
 
 fn compile_command(command: CompileCommand) -> anyhow::Result<()> {
     match command {
-        CompileCommand::Check { path, verbose } => compile_check_command(path, verbose),
         CompileCommand::Graph {
             path,
             theory,
@@ -87,11 +77,22 @@ fn compile_command(command: CompileCommand) -> anyhow::Result<()> {
 fn compile_check_command(path: PathBuf, verbose: bool) -> anyhow::Result<()> {
     let path_display = path.display().to_string();
     let source = std::fs::read_to_string(path)?;
-    let config = CompileConfig::data_control();
-    let theory_set = load_extended_theory_set_from_text(&source, &config)?;
-    let report = check_compile_theories(&theory_set, &config)?;
+    let raw = RawTheorySet::from_text(&source)?;
+    let theory_set = elaborate_and_check(&raw)?;
 
-    compile_check_report::print_compile_check_report(&path_display, &report, verbose);
+    println!("OK: check passed");
+    println!("  file: {path_display}");
+    if verbose {
+        for (id, theory) in &theory_set.theories {
+            if let metacat::theory::Theory::Theory { arrows, .. } = theory {
+                let definitions = arrows
+                    .values()
+                    .filter(|arrow| arrow.definition.is_some())
+                    .count();
+                println!("  {}: {} definitions", id, definitions);
+            }
+        }
+    }
     Ok(())
 }
 

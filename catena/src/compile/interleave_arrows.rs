@@ -47,9 +47,8 @@ use metacat::theory::{
     RawTheorySet, Theory,
     ast::{RawTheory, RawTheoryArrow},
 };
-use open_hypergraphs::{category::Arrow, lax::OpenHypergraph};
-
-use crate::render_hexpr::open_hypergraph_to_hexpr;
+use open_hypergraphs::category::Arrow;
+use std::str::FromStr;
 
 /// Interleave "control" maps into "data" and vice-versa.
 // Sketch:
@@ -145,28 +144,21 @@ fn tensor_pack_embed(
 /// - `A` when `m = 1`
 /// - `head(A) ● pack(tail(A))` when `m ≥ 2`
 fn pack(object_size: usize, tensor: Operation, unit: Operation) -> Hexpr {
-    let mut packed = OpenHypergraph::identity(vec![(); object_size]);
     match object_size {
-        0 => {
-            let unit_node = packed.new_node(());
-            packed.new_edge(unit, (Vec::new(), vec![unit_node]));
-            packed.targets = vec![unit_node];
-        }
-        1 => {}
-        _ => {
-            let mut inputs = packed.targets.clone();
-            while inputs.len() > 1 {
-                let left = inputs.remove(0);
-                let right = inputs.remove(0);
-                let packed_node = packed.new_node(());
-                packed.new_edge(tensor.clone(), (vec![left, right], vec![packed_node]));
-                inputs.insert(0, packed_node);
+        0 => Hexpr::Operation(unit),
+        1 => identity_hexpr(0),
+        n => {
+            let mut steps = Vec::new();
+            for next_var in 2..n {
+                steps.push(Hexpr::Tensor(vec![
+                    Hexpr::Operation(tensor.clone()),
+                    identity_hexpr(next_var),
+                ]));
             }
-            packed.targets = inputs;
+            steps.push(Hexpr::Operation(tensor));
+            Hexpr::Composition(steps)
         }
     }
-
-    open_hypergraph_to_hexpr(packed)
 }
 
 // Compute the composition of a type map with its corresponding 'pack' morphism
@@ -176,6 +168,15 @@ fn pack_type_map(map: &Hexpr, syntax: &Theory, tensor: &Operation, unit: &Operat
     match interpreted.target().len() {
         1 => map.clone(),
         n => Hexpr::Composition(vec![map.clone(), pack(n, tensor.clone(), unit.clone())]),
+    }
+}
+
+fn identity_hexpr(var_index: usize) -> Hexpr {
+    let name = format!("x{var_index}");
+    let var = hexpr::Variable::from_str(&name).expect("generated variable should parse");
+    Hexpr::Frobenius {
+        sources: vec![var.clone()],
+        targets: vec![var],
     }
 }
 

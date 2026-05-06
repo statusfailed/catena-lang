@@ -5,7 +5,6 @@ pub mod pass;
 pub mod backend;
 pub mod compile;
 pub mod lower;
-pub mod render_hexpr;
 pub mod scope;
 pub mod shallow;
 pub mod structured;

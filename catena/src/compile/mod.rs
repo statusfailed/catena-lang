@@ -1,6 +1,7 @@
 pub mod check;
 pub mod config;
 pub mod graph;
+pub mod interleave_arrows;
 pub mod lift;
 pub mod load;
 

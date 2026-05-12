@@ -3,8 +3,9 @@ mod compile_graph_render;
 use std::path::PathBuf;
 
 use catena::{
-    check::{check as check_elaborated, elaborate},
+    check::check as check_elaborated,
     compile::{CompileConfig, compile_graph},
+    elaborate::elaborate,
 };
 use clap::{Parser, Subcommand};
 use metacat::theory::RawTheorySet;

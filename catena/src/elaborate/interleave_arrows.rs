@@ -321,6 +321,7 @@ fn identity_hexpr(var_index: usize) -> Result<Hexpr, InterleaveError> {
 
 #[cfg(test)]
 mod tests {
+    use crate::elaborate::elaborate;
     use metacat::theory::{RawTheorySet, TheoryId};
 
     #[test]
@@ -351,7 +352,7 @@ mod tests {
         "#;
 
         let raw = RawTheorySet::from_text(source).unwrap();
-        let elaborated = crate::check::elaborate(raw).unwrap();
+        let elaborated = elaborate(raw).unwrap();
         crate::check::check(&elaborated).unwrap();
     }
 
@@ -384,7 +385,7 @@ mod tests {
         "#;
 
         let raw = RawTheorySet::from_text(source).unwrap();
-        let elaborated = crate::check::elaborate(raw).unwrap();
+        let elaborated = elaborate(raw).unwrap();
         let checked = crate::check::check(&elaborated).unwrap();
         assert!(
             checked
@@ -440,7 +441,7 @@ mod tests {
         "#;
 
         let raw = RawTheorySet::from_text(source).unwrap();
-        let elaborated = crate::check::elaborate(raw).unwrap();
+        let elaborated = elaborate(raw).unwrap();
         let checked = crate::check::check(&elaborated).unwrap();
         assert!(
             checked
@@ -518,7 +519,7 @@ mod tests {
         "#;
 
         let raw = RawTheorySet::from_text(source).unwrap();
-        let elaborated = crate::check::elaborate(raw).unwrap();
+        let elaborated = elaborate(raw).unwrap();
         crate::check::check(&elaborated).unwrap();
     }
 }

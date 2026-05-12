@@ -58,6 +58,11 @@ pub enum InterleaveError {
         name: String,
         error: <Operation as FromStr>::Err,
     },
+    #[error("invalid generated variable name `{name}`: {error}")]
+    InvalidGeneratedVariableName {
+        name: String,
+        error: <hexpr::Variable as FromStr>::Err,
+    },
     #[error("missing theory `{0}` required for interleaving")]
     MissingTheory(Operation),
     #[error("theory `{theory}` already defines lifted arrow `{arrow}`")]
@@ -75,6 +80,11 @@ fn op_name(name: &str) -> Result<Operation, InterleaveError> {
             name: name.to_string(),
             error,
         })
+}
+
+fn generated_var(name: String) -> Result<hexpr::Variable, InterleaveError> {
+    hexpr::Variable::from_str(&name)
+        .map_err(|error| InterleaveError::InvalidGeneratedVariableName { name, error })
 }
 
 /// Interleave "control" maps into "data" and vice-versa.
@@ -257,19 +267,23 @@ fn expose_nested_boundary_tensors(map: &Hexpr, target_wire_shape: &Operation) ->
 /// - `I` when `m = 0`
 /// - `A` when `m = 1`
 /// - `head(A) ● pack(tail(A))` when `m ≥ 2`
-fn pack(object_size: usize, tensor: Operation, unit: Operation) -> Hexpr {
+fn pack(object_size: usize, tensor: Operation, unit: Operation) -> Result<Hexpr, InterleaveError> {
     match object_size {
-        0 => Hexpr::Operation(unit),
+        0 => Ok(Hexpr::Operation(unit)),
         1 => identity_hexpr(0),
         n => {
             let mut steps = Vec::new();
             for first_pass_through in 2..n {
                 let mut factors = vec![Hexpr::Operation(tensor.clone())];
-                factors.extend((first_pass_through..n).map(identity_hexpr));
+                factors.extend(
+                    (first_pass_through..n)
+                        .map(identity_hexpr)
+                        .collect::<Result<Vec<_>, _>>()?,
+                );
                 steps.push(Hexpr::Tensor(factors));
             }
             steps.push(Hexpr::Operation(tensor));
-            Hexpr::Composition(steps)
+            Ok(Hexpr::Composition(steps))
         }
     }
 }
@@ -291,18 +305,18 @@ fn pack_type_map(
         1 => Ok(map.clone()),
         n => Ok(Hexpr::Composition(vec![
             map.clone(),
-            pack(n, tensor.clone(), unit.clone()),
+            pack(n, tensor.clone(), unit.clone())?,
         ])),
     }
 }
 
-fn identity_hexpr(var_index: usize) -> Hexpr {
+fn identity_hexpr(var_index: usize) -> Result<Hexpr, InterleaveError> {
     let name = format!("x{var_index}");
-    let var = hexpr::Variable::from_str(&name).expect("generated variable should parse");
-    Hexpr::Frobenius {
+    let var = generated_var(name)?;
+    Ok(Hexpr::Frobenius {
         sources: vec![var.clone()],
         targets: vec![var],
-    }
+    })
 }
 
 #[cfg(test)]

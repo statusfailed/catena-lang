@@ -83,7 +83,7 @@ fn compile_command(command: CompileCommand) -> anyhow::Result<()> {
 }
 
 fn check_command(paths: Vec<PathBuf>, verbose: bool) -> anyhow::Result<()> {
-    let raw = load_raw_files(paths.clone())?;
+    let raw = RawTheorySet::from_files(paths.clone())?;
     let elaborated = elaborate(raw)?;
     let theory_set = check_elaborated(&elaborated)?;
 
@@ -105,19 +105,6 @@ fn check_command(paths: Vec<PathBuf>, verbose: bool) -> anyhow::Result<()> {
         }
     }
     Ok(())
-}
-
-fn load_raw_files(paths: Vec<PathBuf>) -> anyhow::Result<RawTheorySet> {
-    let mut raws = paths.into_iter();
-    let Some(first_path) = raws.next() else {
-        anyhow::bail!("at least one input file is required");
-    };
-
-    let mut merged = RawTheorySet::from_file(first_path)?;
-    for path in raws {
-        merged = merged.merge(RawTheorySet::from_file(path)?)?;
-    }
-    Ok(merged)
 }
 
 fn elaborate_command(path: PathBuf) -> anyhow::Result<()> {

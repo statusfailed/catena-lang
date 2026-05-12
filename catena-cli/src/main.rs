@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 use catena::{
     check::check as check_elaborated,
-    compile::{CompileConfig, compile_graph},
+    compile::{CompileConfig, GraphCompileOptions, compile_graph_with_options},
     elaborate::elaborate,
 };
 use clap::{Parser, Subcommand};
@@ -58,6 +58,10 @@ enum CompileCommand {
         /// Write SVG to a file instead of stdout
         #[arg(short, long)]
         output: Option<PathBuf>,
+
+        /// Do not inline definitions matching this pattern. Supports `*`.
+        #[arg(long = "no-inline")]
+        no_inline: Vec<String>,
     },
 }
 
@@ -78,7 +82,8 @@ fn compile_command(command: CompileCommand) -> anyhow::Result<()> {
             theory,
             definition,
             output,
-        } => compile_graph_command(path, &theory, &definition, output),
+            no_inline,
+        } => compile_graph_command(path, &theory, &definition, output, no_inline),
     }
 }
 
@@ -118,13 +123,20 @@ fn compile_graph_command(
     theory: &str,
     definition: &str,
     output: Option<PathBuf>,
+    no_inline: Vec<String>,
 ) -> anyhow::Result<()> {
     let source = std::fs::read_to_string(path)?;
     let raw = RawTheorySet::from_text(&source)?;
     let elaborated = elaborate(raw)?;
     let config = CompileConfig::data_control();
     let theory_set = check_elaborated(&elaborated)?;
-    let graph = compile_graph(&theory_set, &config, theory, definition)?;
+    let graph = compile_graph_with_options(
+        &theory_set,
+        &config,
+        theory,
+        definition,
+        GraphCompileOptions { no_inline },
+    )?;
     let svg = compile_graph_render::nested_svg(&graph)?;
 
     match output {

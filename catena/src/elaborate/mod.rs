@@ -16,6 +16,7 @@ const NAT_THEORY: &str = "nat";
 
 /// Elaborate input program to interleave control/data maps.
 pub fn elaborate(raw: RawTheorySet) -> Result<RawTheorySet, CheckError> {
+    let raw = raw.with_extensions()?;
     let syntax = interpret_syntax(&raw)?;
     Ok(interleave(&syntax, raw)?)
 }

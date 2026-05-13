@@ -1,7 +1,7 @@
 //! Typechecking and elaboration-by-interleaving of theories
 use metacat::{
     check::check as metacat_check,
-    theory::{RawTheorySet, Theory, TheorySet},
+    theory::{RawTheorySet, Theory, TheorySet, ast::ExtensionsError},
 };
 use thiserror::Error;
 
@@ -15,6 +15,8 @@ pub enum CheckError {
     MissingSyntaxTheory(String),
     #[error("missing interpreted syntax theory `{0}`")]
     MissingInterpretedSyntaxTheory(String),
+    #[error(transparent)]
+    Extensions(#[from] ExtensionsError),
     #[error("definition check failed in theory `{theory}`, definition `{definition}`: {error:?}")]
     Definition {
         theory: String,

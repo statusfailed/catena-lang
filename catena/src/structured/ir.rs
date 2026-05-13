@@ -46,6 +46,10 @@ pub enum Stmt {
     Continue(String),
     Return,
     Barrier,
+    Assign {
+        lhs: String,
+        rhs: String,
+    },
     Primitive(Primitive),
     Comment(String),
 }
@@ -53,6 +57,8 @@ pub enum Stmt {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Primitive {
     pub name: String,
+    pub inputs: Vec<String>,
+    pub outputs: Vec<String>,
     pub code: String,
 }
 
@@ -119,8 +125,26 @@ fn render_ir_stmts(out: &mut String, stmts: &[Stmt], indent: usize) {
             Stmt::Continue(label) => out.push_str(&format!("{pad}continue {label}\n")),
             Stmt::Return => out.push_str(&format!("{pad}return\n")),
             Stmt::Barrier => out.push_str(&format!("{pad}barrier\n")),
+            Stmt::Assign { lhs, rhs } => out.push_str(&format!("{pad}{lhs} = {rhs}\n")),
             Stmt::Primitive(primitive) => {
-                out.push_str(&format!("{pad}primitive {}\n", primitive.name));
+                if primitive.outputs.is_empty() {
+                    if primitive.inputs.is_empty() {
+                        out.push_str(&format!("{pad}{}\n", primitive.name));
+                    } else {
+                        out.push_str(&format!(
+                            "{pad}{}({})\n",
+                            primitive.name,
+                            primitive.inputs.join(", ")
+                        ));
+                    }
+                } else {
+                    out.push_str(&format!(
+                        "{pad}{} = {}({})\n",
+                        primitive.outputs.join(", "),
+                        primitive.name,
+                        primitive.inputs.join(", ")
+                    ));
+                }
             }
             Stmt::Comment(comment) => out.push_str(&format!("{pad}// {comment}\n")),
         }

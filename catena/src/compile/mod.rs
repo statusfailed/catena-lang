@@ -1,4 +1,5 @@
 pub mod config;
+pub mod cuda;
 pub mod graph;
 
 pub use config::{CompileConfig, TheoryExtension};

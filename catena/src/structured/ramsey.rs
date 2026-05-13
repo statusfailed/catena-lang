@@ -1,138 +1,23 @@
-use super::ir::Stmt;
-use crate::lang::{Arr, Obj};
-use open_hypergraphs::lax::{EdgeId, NodeId, OpenHypergraph};
-use std::collections::{BTreeSet, HashMap, HashSet};
+use super::{
+    cfg::{Cfg, CfgNodeId, StructuredError, Transfer},
+    ir::Stmt,
+};
+use std::collections::{BTreeSet, HashSet};
 
-pub trait ArrowSemantics {
-    fn actions(&self, op: &str) -> Vec<Stmt>;
-
-    fn condition(&self, op: &str) -> String {
-        format!("/* {} */ 1", sanitize_ident(op))
-    }
-
-    fn selector(&self, op: &str) -> String {
-        format!("/* {} */ 0", sanitize_ident(op))
-    }
-
-    fn counted_loop(&self, _op: &str) -> Option<(String, String)> {
-        None
-    }
-}
-
-#[derive(Debug, thiserror::Error)]
-pub enum StructuredError {
-    #[error("shallow graph has no operation reachable from the source interface")]
-    MissingEntry,
-    #[error("control-flow graph has an irreducible back edge from {from} to {to}")]
-    IrreducibleBackEdge { from: String, to: String },
-    #[error("branch target {0} is not in the structured context")]
-    MissingContext(String),
-    #[error("control node {node} has {successors} entry successors; only one entry is supported")]
-    UnsupportedEntry { node: String, successors: usize },
-}
-
-pub fn structure(cfg: Cfg, semantics: impl ArrowSemantics) -> Result<Vec<Stmt>, StructuredError> {
+pub fn structure(cfg: Cfg) -> Result<Vec<Stmt>, StructuredError> {
     let analyses = Analyses::new(&cfg)?;
-    let mut structurer = Structurer {
-        cfg,
-        analyses,
-        semantics,
-    };
+    let mut structurer = Structurer { cfg, analyses };
     let mut body = structurer.do_tree(structurer.cfg.entry, &[])?;
     drop_redundant_terminal_continues(&mut body);
     Ok(body)
 }
 
 #[derive(Debug, Clone)]
-pub struct Cfg {
-    entry: usize,
-    nodes: Vec<CfgNode>,
-    predecessors: Vec<Vec<usize>>,
-}
-
-#[derive(Debug, Clone)]
-struct CfgNode {
-    edge: EdgeId,
-    op: String,
-    successors: Vec<usize>,
-}
-
-impl Cfg {
-    pub fn from_hypergraph(f: &OpenHypergraph<Obj, Arr>) -> Result<Self, StructuredError> {
-        let mut consumers: HashMap<NodeId, Vec<usize>> = HashMap::new();
-        for (edge_index, adjacency) in f.hypergraph.adjacency.iter().enumerate() {
-            for source in &adjacency.sources {
-                consumers.entry(*source).or_default().push(edge_index);
-            }
-        }
-
-        let mut entry_edges = Vec::new();
-        // One structured program has one entry point. Additional open sources
-        // are external state alternatives, not extra CFG entries.
-        if let Some(source) = f.sources.first() {
-            if let Some(edges) = consumers.get(source) {
-                push_unique_all(&mut entry_edges, edges.iter().copied());
-            }
-        }
-        if entry_edges.is_empty() && !f.hypergraph.edges.is_empty() {
-            entry_edges.push(0);
-        }
-
-        let entry = match entry_edges.as_slice() {
-            [edge] => *edge,
-            [] => return Err(StructuredError::MissingEntry),
-            _ => {
-                return Err(StructuredError::UnsupportedEntry {
-                    node: "entry".to_string(),
-                    successors: entry_edges.len(),
-                });
-            }
-        };
-
-        let graph_targets: HashSet<NodeId> = f.targets.iter().copied().collect();
-        let mut nodes = Vec::new();
-        for (edge_index, op) in f.hypergraph.edges.iter().enumerate() {
-            let mut successors = Vec::new();
-            for target in &f.hypergraph.adjacency[edge_index].targets {
-                if graph_targets.contains(target) {
-                    continue;
-                }
-                if let Some(edges) = consumers.get(target) {
-                    push_unique_all(&mut successors, edges.iter().copied());
-                }
-            }
-            nodes.push(CfgNode {
-                edge: EdgeId(edge_index),
-                op: op.to_string(),
-                successors,
-            });
-        }
-
-        let mut predecessors = vec![Vec::new(); nodes.len()];
-        for node in &nodes {
-            for successor in &node.successors {
-                predecessors[*successor].push(node.edge.0);
-            }
-        }
-
-        Ok(Self {
-            entry,
-            nodes,
-            predecessors,
-        })
-    }
-
-    fn label(&self, node: usize) -> String {
-        format!("n{node}")
-    }
-}
-
-#[derive(Debug, Clone)]
 struct Analyses {
     rpo_index: Vec<usize>,
-    children: Vec<Vec<usize>>,
-    merge_nodes: HashSet<usize>,
-    loop_headers: HashSet<usize>,
+    children: Vec<Vec<CfgNodeId>>,
+    merge_nodes: HashSet<CfgNodeId>,
+    loop_headers: HashSet<CfgNodeId>,
 }
 
 impl Analyses {
@@ -157,18 +42,18 @@ impl Analyses {
 
         let mut forward_inedges = vec![0usize; cfg.nodes.len()];
         let mut loop_headers = HashSet::new();
-        for node in &cfg.nodes {
-            for successor in &node.successors {
-                if rpo_index[*successor] <= rpo_index[node.edge.0] {
-                    if !dominators[node.edge.0].contains(successor) {
+        for (node_index, node) in cfg.nodes.iter().enumerate() {
+            for successor in node.successors() {
+                if rpo_index[successor] <= rpo_index[node_index] {
+                    if !dominators[node_index].contains(&successor) {
                         return Err(StructuredError::IrreducibleBackEdge {
-                            from: cfg.label(node.edge.0),
-                            to: cfg.label(*successor),
+                            from: cfg.label(node_index),
+                            to: cfg.label(successor),
                         });
                     }
-                    loop_headers.insert(*successor);
+                    loop_headers.insert(successor);
                 } else {
-                    forward_inedges[*successor] += 1;
+                    forward_inedges[successor] += 1;
                 }
             }
         }
@@ -191,26 +76,21 @@ impl Analyses {
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum ContextFrame {
     IfThenElse,
-    LoopHeadedBy(usize),
-    BlockFollowedBy(usize),
+    LoopHeadedBy(CfgNodeId),
+    BlockFollowedBy(CfgNodeId),
 }
 
-struct Structurer<S> {
+struct Structurer {
     cfg: Cfg,
     analyses: Analyses,
-    semantics: S,
 }
 
-impl<S: ArrowSemantics> Structurer<S> {
+impl Structurer {
     fn do_tree(
         &mut self,
-        node: usize,
+        node: CfgNodeId,
         context: &[ContextFrame],
     ) -> Result<Vec<Stmt>, StructuredError> {
-        if self.is_counted_loop(node) {
-            return self.do_counted_loop(node, context);
-        }
-
         let mut inner_context = context.to_vec();
         let mut code = if self.analyses.loop_headers.contains(&node) {
             inner_context.insert(0, ContextFrame::LoopHeadedBy(node));
@@ -225,40 +105,10 @@ impl<S: ArrowSemantics> Structurer<S> {
         Ok(code)
     }
 
-    fn do_counted_loop(
-        &mut self,
-        node: usize,
-        context: &[ContextFrame],
-    ) -> Result<Vec<Stmt>, StructuredError> {
-        let successors = self.cfg.nodes[node].successors.clone();
-        let [body_target, exit_target] = successors.as_slice() else {
-            return self.node_within(node, self.merge_children(node), context);
-        };
-
-        let mut loop_context = context.to_vec();
-        loop_context.insert(0, ContextFrame::LoopHeadedBy(node));
-
-        let (var, extent) = self
-            .semantics
-            .counted_loop(&self.cfg.nodes[node].op)
-            .expect("is_counted_loop checked counted_loop");
-        let mut body = self.do_branch(node, *body_target, &loop_context)?;
-        drop_redundant_terminal_continues(&mut body);
-
-        let mut code = vec![Stmt::For {
-            label: self.cfg.label(node),
-            var,
-            extent,
-            body,
-        }];
-        code.extend(self.do_branch(node, *exit_target, context)?);
-        Ok(code)
-    }
-
     fn node_within(
         &mut self,
-        node: usize,
-        mut merge_children: Vec<usize>,
+        node: CfgNodeId,
+        mut merge_children: Vec<CfgNodeId>,
         context: &[ContextFrame],
     ) -> Result<Vec<Stmt>, StructuredError> {
         if let Some(merge_child) = merge_children.pop() {
@@ -273,30 +123,34 @@ impl<S: ArrowSemantics> Structurer<S> {
         }
 
         let cfg_node = self.cfg.nodes[node].clone();
-        let mut code = self.semantics.actions(&cfg_node.op);
-        match cfg_node.successors.as_slice() {
-            [] => code.push(Stmt::Return),
-            [target] => code.extend(self.do_branch(node, *target, context)?),
-            [then_target, else_target] => {
+        let mut code = cfg_node.statements;
+        match cfg_node.transfer {
+            Transfer::Return => code.push(Stmt::Return),
+            Transfer::Goto(target) => code.extend(self.do_branch(node, target, context)?),
+            Transfer::If {
+                condition,
+                then_target,
+                else_target,
+            } => {
                 let mut then_context = context.to_vec();
                 then_context.insert(0, ContextFrame::IfThenElse);
                 let else_context = then_context.clone();
                 code.push(Stmt::If {
-                    condition: self.semantics.condition(&cfg_node.op),
-                    then_body: self.do_branch(node, *then_target, &then_context)?,
-                    else_body: self.do_branch(node, *else_target, &else_context)?,
+                    condition,
+                    then_body: self.do_branch(node, then_target, &then_context)?,
+                    else_body: self.do_branch(node, else_target, &else_context)?,
                 });
             }
-            successors => {
-                let mut cases = Vec::new();
-                for successor in successors {
+            Transfer::Switch { selector, targets } => {
+                let mut case_bodies = Vec::new();
+                for target in targets {
                     let mut case_context = context.to_vec();
                     case_context.insert(0, ContextFrame::IfThenElse);
-                    cases.push(self.do_branch(node, *successor, &case_context)?);
+                    case_bodies.push(self.do_branch(node, target, &case_context)?);
                 }
                 code.push(Stmt::Switch {
-                    selector: self.semantics.selector(&cfg_node.op),
-                    cases,
+                    selector,
+                    cases: case_bodies,
                 });
             }
         }
@@ -305,8 +159,8 @@ impl<S: ArrowSemantics> Structurer<S> {
 
     fn do_branch(
         &mut self,
-        source: usize,
-        target: usize,
+        source: CfgNodeId,
+        target: CfgNodeId,
         context: &[ContextFrame],
     ) -> Result<Vec<Stmt>, StructuredError> {
         if self.is_backward(source, target) {
@@ -319,7 +173,7 @@ impl<S: ArrowSemantics> Structurer<S> {
         self.do_tree(target, context)
     }
 
-    fn merge_children(&self, node: usize) -> Vec<usize> {
+    fn merge_children(&self, node: CfgNodeId) -> Vec<CfgNodeId> {
         let mut children = self.analyses.children[node]
             .iter()
             .copied()
@@ -329,11 +183,11 @@ impl<S: ArrowSemantics> Structurer<S> {
         children
     }
 
-    fn is_backward(&self, source: usize, target: usize) -> bool {
+    fn is_backward(&self, source: CfgNodeId, target: CfgNodeId) -> bool {
         self.analyses.rpo_index[target] <= self.analyses.rpo_index[source]
     }
 
-    fn index(&self, target: usize, context: &[ContextFrame]) -> Result<usize, StructuredError> {
+    fn index(&self, target: CfgNodeId, context: &[ContextFrame]) -> Result<usize, StructuredError> {
         for (index, frame) in context.iter().enumerate() {
             let matches = match frame {
                 ContextFrame::IfThenElse => false,
@@ -347,25 +201,16 @@ impl<S: ArrowSemantics> Structurer<S> {
         }
         Err(StructuredError::MissingContext(self.cfg.label(target)))
     }
-
-    fn is_counted_loop(&self, node: usize) -> bool {
-        self.analyses.loop_headers.contains(&node)
-            && self.cfg.nodes[node].successors.len() == 2
-            && self
-                .semantics
-                .counted_loop(&self.cfg.nodes[node].op)
-                .is_some()
-    }
 }
 
-fn reverse_postorder(cfg: &Cfg) -> Vec<usize> {
-    fn visit(cfg: &Cfg, node: usize, seen: &mut [bool], postorder: &mut Vec<usize>) {
+fn reverse_postorder(cfg: &Cfg) -> Vec<CfgNodeId> {
+    fn visit(cfg: &Cfg, node: CfgNodeId, seen: &mut [bool], postorder: &mut Vec<CfgNodeId>) {
         if seen[node] {
             return;
         }
         seen[node] = true;
-        for successor in &cfg.nodes[node].successors {
-            visit(cfg, *successor, seen, postorder);
+        for successor in cfg.nodes[node].successors() {
+            visit(cfg, successor, seen, postorder);
         }
         postorder.push(node);
     }
@@ -377,7 +222,7 @@ fn reverse_postorder(cfg: &Cfg) -> Vec<usize> {
     postorder
 }
 
-fn dominators(cfg: &Cfg, rpo: &[usize]) -> Vec<BTreeSet<usize>> {
+fn dominators(cfg: &Cfg, rpo: &[CfgNodeId]) -> Vec<BTreeSet<CfgNodeId>> {
     let all_reachable = rpo.iter().copied().collect::<BTreeSet<_>>();
     let mut doms = vec![BTreeSet::new(); cfg.nodes.len()];
     for node in rpo {
@@ -417,7 +262,7 @@ fn dominators(cfg: &Cfg, rpo: &[usize]) -> Vec<BTreeSet<usize>> {
     doms
 }
 
-fn immediate_dominators(cfg: &Cfg, doms: &[BTreeSet<usize>]) -> Vec<Option<usize>> {
+fn immediate_dominators(cfg: &Cfg, doms: &[BTreeSet<CfgNodeId>]) -> Vec<Option<CfgNodeId>> {
     let mut idom = vec![None; cfg.nodes.len()];
     for node in 0..cfg.nodes.len() {
         if node == cfg.entry || doms[node].is_empty() {
@@ -435,14 +280,6 @@ fn immediate_dominators(cfg: &Cfg, doms: &[BTreeSet<usize>]) -> Vec<Option<usize
         });
     }
     idom
-}
-
-fn push_unique_all(target: &mut Vec<usize>, values: impl IntoIterator<Item = usize>) {
-    for value in values {
-        if !target.contains(&value) {
-            target.push(value);
-        }
-    }
 }
 
 fn drop_redundant_terminal_continues(stmts: &mut Vec<Stmt>) {
@@ -470,10 +307,4 @@ fn drop_redundant_terminal_continues(stmts: &mut Vec<Stmt>) {
     if matches!(stmts.last(), Some(Stmt::Continue(_))) {
         stmts.pop();
     }
-}
-
-fn sanitize_ident(name: &str) -> String {
-    name.chars()
-        .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
-        .collect()
 }

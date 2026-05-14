@@ -1,17 +1,9 @@
-mod compile_graph_render;
-
 use std::path::PathBuf;
 
-use catena::{
-    check::check as check_elaborated,
-    compile::{
-        CompileConfig, GraphCompileOptions, compile_graph_with_options,
-        cuda::{CudaEmit, compile_cuda_source},
-    },
-    elaborate::elaborate,
+use catena::compile::{
+    CompilePipeline, CompileRequest, Emit, GraphCompileOptions, OutputFormat, compile,
 };
 use clap::{Parser, Subcommand, ValueEnum};
-use metacat::theory::RawTheorySet;
 
 #[derive(Parser)]
 #[command(name = "catena", version = env!("CARGO_PKG_VERSION"))]
@@ -40,25 +32,22 @@ enum Command {
 
     /// Run the Catena compile pipeline
     Compile {
-        #[command(subcommand)]
-        command: CompileCommand,
-    },
-}
-
-#[derive(Subcommand)]
-enum CompileCommand {
-    /// Render one compile graph as SVG, inlining only same-theory definitions
-    Graph {
-        #[arg()]
-        path: PathBuf,
+        #[arg(required = true)]
+        paths: Vec<PathBuf>,
 
         #[arg(long)]
-        theory: String,
+        emit: EmitArg,
 
-        #[arg()]
-        definition: String,
+        #[arg(long)]
+        theory: Option<String>,
 
-        /// Write SVG to a file instead of stdout
+        #[arg(long)]
+        entry: Option<String>,
+
+        #[arg(long, value_enum)]
+        format: Option<OutputFormatArg>,
+
+        /// Write output to a file instead of stdout
         #[arg(short, long)]
         output: Option<PathBuf>,
 
@@ -66,31 +55,21 @@ enum CompileCommand {
         #[arg(long = "no-inline")]
         no_inline: Vec<String>,
     },
-
-    /// Compile one explicit entry arrow to CUDA C
-    Cuda {
-        #[arg()]
-        path: PathBuf,
-
-        #[arg(long)]
-        theory: String,
-
-        #[arg(long)]
-        entry: String,
-
-        #[arg(long, value_enum, default_value_t = CudaEmitArg::Cuda)]
-        emit: CudaEmitArg,
-
-        /// Write output to a file instead of stdout
-        #[arg(short, long)]
-        output: Option<PathBuf>,
-    },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
-enum CudaEmitArg {
+enum EmitArg {
     Cuda,
+    CompileGraph,
+    Elaborated,
+    Checked,
     StructuredIr,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
+enum OutputFormatArg {
+    Svg,
+    Text,
 }
 
 fn main() -> anyhow::Result<()> {
@@ -99,33 +78,28 @@ fn main() -> anyhow::Result<()> {
     match cli.command {
         Command::Elaborate { paths } => elaborate_command(paths),
         Command::Check { paths, verbose } => check_command(paths, verbose),
-        Command::Compile { command } => compile_command(command),
-    }
-}
-
-fn compile_command(command: CompileCommand) -> anyhow::Result<()> {
-    match command {
-        CompileCommand::Graph {
-            path,
-            theory,
-            definition,
-            output,
-            no_inline,
-        } => compile_graph_command(path, &theory, &definition, output, no_inline),
-        CompileCommand::Cuda {
-            path,
+        Command::Compile {
+            paths,
+            emit,
             theory,
             entry,
-            emit,
+            format,
             output,
-        } => compile_cuda_command(path, &theory, &entry, emit, output),
+            no_inline,
+        } => compile_command(paths, emit, theory, entry, format, output, no_inline),
     }
 }
 
 fn check_command(paths: Vec<PathBuf>, verbose: bool) -> anyhow::Result<()> {
-    let raw = RawTheorySet::from_files(paths.clone())?;
-    let elaborated = elaborate(raw)?;
-    let theory_set = check_elaborated(&elaborated)?;
+    let mut pipeline = CompilePipeline::new(CompileRequest {
+        paths: paths.clone(),
+        emit: Emit::Checked,
+        theory: None,
+        entry: None,
+        format: None,
+        graph_options: GraphCompileOptions::default(),
+    });
+    let theory_set = pipeline.checked_elaborated_theory()?;
 
     println!("OK: check passed");
     if paths.len() == 1 {
@@ -148,70 +122,67 @@ fn check_command(paths: Vec<PathBuf>, verbose: bool) -> anyhow::Result<()> {
 }
 
 fn elaborate_command(paths: Vec<PathBuf>) -> anyhow::Result<()> {
-    let raw = RawTheorySet::from_files(paths)?;
-    let elaborated = elaborate(raw)?;
-    println!("{}", elaborated.to_hexpr_text());
-    Ok(())
+    let generated = compile(CompileRequest {
+        paths,
+        emit: Emit::Elaborated,
+        theory: None,
+        entry: None,
+        format: None,
+        graph_options: GraphCompileOptions::default(),
+    })?;
+    write_output(None, &generated)
 }
 
-fn compile_graph_command(
-    path: PathBuf,
-    theory: &str,
-    definition: &str,
+fn compile_command(
+    paths: Vec<PathBuf>,
+    emit: EmitArg,
+    theory: Option<String>,
+    entry: Option<String>,
+    format: Option<OutputFormatArg>,
     output: Option<PathBuf>,
     no_inline: Vec<String>,
 ) -> anyhow::Result<()> {
-    let source = std::fs::read_to_string(path)?;
-    let raw = RawTheorySet::from_text(&source)?;
-    let elaborated = elaborate(raw)?;
-    let config = CompileConfig::data_control();
-    let theory_set = check_elaborated(&elaborated)?;
-    let graph = compile_graph_with_options(
-        &theory_set,
-        &config,
+    let generated = compile(CompileRequest {
+        paths,
+        emit: emit.into(),
         theory,
-        definition,
-        GraphCompileOptions { no_inline },
-    )?;
-    let svg = compile_graph_render::nested_svg(&graph)?;
+        entry,
+        format: format.map(Into::into),
+        graph_options: GraphCompileOptions { no_inline },
+    })?;
 
-    match output {
-        Some(output) => std::fs::write(output, svg)?,
-        None => {
-            use std::io::Write;
-            std::io::stdout().write_all(&svg)?;
-        }
-    }
-
-    Ok(())
+    write_output(output, &generated)
 }
 
-fn compile_cuda_command(
-    path: PathBuf,
-    theory: &str,
-    entry: &str,
-    emit: CudaEmitArg,
-    output: Option<PathBuf>,
-) -> anyhow::Result<()> {
-    let source = std::fs::read_to_string(path)?;
-    let generated = compile_cuda_source(&source, theory, entry, emit.into())?;
-
+fn write_output(output: Option<PathBuf>, generated: &[u8]) -> anyhow::Result<()> {
     match output {
         Some(output) => std::fs::write(output, generated)?,
         None => {
             use std::io::Write;
-            std::io::stdout().write_all(generated.as_bytes())?;
+            std::io::stdout().write_all(generated)?;
         }
     }
 
     Ok(())
 }
 
-impl From<CudaEmitArg> for CudaEmit {
-    fn from(value: CudaEmitArg) -> Self {
+impl From<EmitArg> for Emit {
+    fn from(value: EmitArg) -> Self {
         match value {
-            CudaEmitArg::Cuda => CudaEmit::Cuda,
-            CudaEmitArg::StructuredIr => CudaEmit::StructuredIr,
+            EmitArg::Cuda => Emit::Cuda,
+            EmitArg::CompileGraph => Emit::CompileGraph,
+            EmitArg::Elaborated => Emit::Elaborated,
+            EmitArg::Checked => Emit::Checked,
+            EmitArg::StructuredIr => Emit::StructuredIr,
+        }
+    }
+}
+
+impl From<OutputFormatArg> for OutputFormat {
+    fn from(value: OutputFormatArg) -> Self {
+        match value {
+            OutputFormatArg::Svg => OutputFormat::Svg,
+            OutputFormatArg::Text => OutputFormat::Text,
         }
     }
 }

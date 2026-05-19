@@ -1,7 +1,7 @@
 use metacat::theory::{RawTheorySet, TheorySet};
 use thiserror::Error;
 
-use crate::{elaborate::ElaborateError, report::CompileReport};
+use crate::{check::CheckError, elaborate::ElaborateError, report::CompileReport};
 
 #[derive(Debug, Error)]
 pub enum CompileError {
@@ -9,6 +9,8 @@ pub enum CompileError {
     Elaborate(#[from] ElaborateError),
     #[error(transparent)]
     Load(#[from] metacat::theory::LoadError),
+    #[error(transparent)]
+    Check(#[from] CheckError),
 }
 
 // TODO: Write a function `compile` which:
@@ -32,9 +34,11 @@ pub enum CompileError {
 pub fn compile(raw_theories: RawTheorySet) -> Result<CompileReport, CompileError> {
     let elaborated = crate::elaborate::elaborate(raw_theories.clone())?;
     let theory_set = TheorySet::from_raw(elaborated.clone())?;
+    let definition_types = crate::check::check(&theory_set)?;
     Ok(CompileReport {
         raw_theories,
         elaborated,
         theory_set,
+        definition_types,
     })
 }

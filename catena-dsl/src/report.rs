@@ -1,11 +1,14 @@
 use std::{fs, io, path::Path};
 
-use metacat::theory::{RawTheorySet, TheorySet};
+use hexpr::Operation;
+use metacat::{theory::{RawTheorySet, TheoryId, TheorySet}, tree::Tree};
+use std::collections::BTreeMap;
 
 pub struct CompileReport {
     pub raw_theories: RawTheorySet,
     pub elaborated: RawTheorySet,
     pub theory_set: TheorySet,
+    pub definition_types: BTreeMap<TheoryId, BTreeMap<Operation, Vec<Tree<(), Operation>>>>,
 }
 
 impl CompileReport {

@@ -9,7 +9,7 @@ use metacat::theory::{
 
 use crate::elaborate::ElaborateError;
 
-const FN_TYPE: &str = "=>";
+const FN_TYPE: &str = "->";
 const PRODUCT_TYPE: &str = "*";
 const UNIT_TYPE: &str = "1";
 const NAME_PREFIX: &str = "name.";

@@ -1,10 +1,11 @@
 use std::{fs, io, path::Path};
 
-use metacat::theory::RawTheorySet;
+use metacat::theory::{RawTheorySet, TheorySet};
 
 pub struct CompileReport {
     pub raw_theories: RawTheorySet,
     pub elaborated: RawTheorySet,
+    pub theory_set: TheorySet,
 }
 
 impl CompileReport {

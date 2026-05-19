@@ -1,6 +1,15 @@
-use metacat::theory::RawTheorySet;
+use metacat::theory::{RawTheorySet, TheorySet};
+use thiserror::Error;
 
 use crate::{elaborate::ElaborateError, report::CompileReport};
+
+#[derive(Debug, Error)]
+pub enum CompileError {
+    #[error(transparent)]
+    Elaborate(#[from] ElaborateError),
+    #[error(transparent)]
+    Load(#[from] metacat::theory::LoadError),
+}
 
 // TODO: Write a function `compile` which:
 //
@@ -20,10 +29,12 @@ use crate::{elaborate::ElaborateError, report::CompileReport};
 // This should
 
 /// Compile all definitions from the input raw theories and collect intermediate data.
-pub fn compile(raw_theories: RawTheorySet) -> Result<CompileReport, ElaborateError> {
+pub fn compile(raw_theories: RawTheorySet) -> Result<CompileReport, CompileError> {
     let elaborated = crate::elaborate::elaborate(raw_theories.clone())?;
+    let theory_set = TheorySet::from_raw(elaborated.clone())?;
     Ok(CompileReport {
         raw_theories,
         elaborated,
+        theory_set,
     })
 }

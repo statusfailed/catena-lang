@@ -1,0 +1,4 @@
+# goal: generate StructuredProgram from this which ends up like
+# void not(x0: bool, x1: *bool) { ... }
+# note: return values are always passed as ptrs
+(def program not : bool -> bool = bool.not)

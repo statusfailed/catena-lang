@@ -106,6 +106,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "catena-dsl"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "catena",
+ "clap",
+ "hexpr",
+ "metacat",
+]
+
+[[package]]
 name = "cc"
 version = "1.2.61"
 source = "registry+https://github.com/rust-lang/crates.io-index"

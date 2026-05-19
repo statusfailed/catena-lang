@@ -1,8 +1,10 @@
+mod svg;
+
 use std::{fs, io, path::Path};
 
 use hexpr::Operation;
-use metacat::{theory::{RawTheorySet, TheoryId, TheorySet}, tree::Tree};
 use std::collections::BTreeMap;
+use metacat::{theory::{RawTheorySet, TheoryId, TheorySet}, tree::Tree};
 
 pub struct CompileReport {
     pub raw_theories: RawTheorySet,
@@ -17,6 +19,7 @@ impl CompileReport {
         fs::create_dir_all(dir)?;
         fs::write(dir.join("raw_theories.hex"), self.raw_theories.to_hexpr_text())?;
         fs::write(dir.join("elaborated.hex"), self.elaborated.to_hexpr_text())?;
+        svg::dump_svgs(self, &dir.join("svgs"))?;
         Ok(())
     }
 }

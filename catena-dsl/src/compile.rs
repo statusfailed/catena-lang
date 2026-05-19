@@ -1,7 +1,6 @@
 use metacat::theory::RawTheorySet;
 
-use catena::elaborate::ElaborateError;
-use crate::report::CompileReport;
+use crate::{elaborate::ElaborateError, report::CompileReport};
 
 // TODO: Write a function `compile` which:
 //
@@ -22,7 +21,7 @@ use crate::report::CompileReport;
 
 /// Compile all definitions from the input raw theories and collect intermediate data.
 pub fn compile(raw_theories: RawTheorySet) -> Result<CompileReport, ElaborateError> {
-    let elaborated = catena::elaborate::elaborate(raw_theories.clone())?;
+    let elaborated = crate::elaborate::elaborate(raw_theories.clone())?;
     Ok(CompileReport {
         raw_theories,
         elaborated,

@@ -1,6 +1,6 @@
-use hexpr::Operation;
-use metacat::theory::TheorySet;
+use metacat::theory::RawTheorySet;
 
+use catena::elaborate::ElaborateError;
 use crate::report::CompileReport;
 
 // TODO: Write a function `compile` which:
@@ -20,11 +20,11 @@ use crate::report::CompileReport;
 //
 // This should
 
-/// Compile all definitions from 'theory' into a list of [`catena::structured::StructuredProgram`].
-fn compile(theory_name: &Operation, theories: &TheorySet) -> CompileReport {
-    let _ = (theory_name, theories);
-
-    // Elaborate theories
-
-    todo!()
+/// Compile all definitions from the input raw theories and collect intermediate data.
+pub fn compile(raw_theories: RawTheorySet) -> Result<CompileReport, ElaborateError> {
+    let elaborated = catena::elaborate::elaborate(raw_theories.clone())?;
+    Ok(CompileReport {
+        raw_theories,
+        elaborated,
+    })
 }

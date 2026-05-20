@@ -1,7 +1,10 @@
 use metacat::theory::{RawTheorySet, TheorySet};
 use thiserror::Error;
 
-use crate::{check::CheckError, elaborate::ElaborateError, report::CompileReport};
+use crate::{
+    check::CheckError, elaborate::ElaborateError, pass::forget_closures::ForgetClosuresError,
+    report::CompileReport,
+};
 
 #[derive(Debug, Error)]
 pub enum CompileError {
@@ -11,6 +14,8 @@ pub enum CompileError {
     Load(#[from] metacat::theory::LoadError),
     #[error(transparent)]
     Check(#[from] CheckError),
+    #[error(transparent)]
+    ForgetClosures(#[from] ForgetClosuresError),
 }
 
 // TODO: Write a function `compile` which:
@@ -35,10 +40,12 @@ pub fn compile(raw_theories: RawTheorySet) -> Result<CompileReport, CompileError
     let elaborated = crate::elaborate::elaborate(raw_theories.clone())?;
     let theory_set = TheorySet::from_raw(elaborated.clone())?;
     let definition_types = crate::check::check(&theory_set)?;
+    let forgotten_closures = crate::pass::forget_closures::run(&theory_set, &definition_types)?;
     Ok(CompileReport {
         raw_theories,
         elaborated,
         theory_set,
         definition_types,
+        forgotten_closures,
     })
 }

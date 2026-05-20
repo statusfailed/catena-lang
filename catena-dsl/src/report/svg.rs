@@ -2,19 +2,20 @@ use std::{fs, io, path::Path};
 
 use hexpr::Operation;
 use metacat::theory::{Theory, TheoryId};
+use open_hypergraphs::lax::OpenHypergraph;
 use open_hypergraphs_dot::{Options, svg::to_svg_with};
 
 use crate::report::CompileReport;
 
+/// Render a list of SVGs for each definition being compiled, one for each transformation phase.
 pub fn dump_svgs(report: &CompileReport, dir: &Path) -> io::Result<()> {
     fs::create_dir_all(dir)?;
 
     for (theory_id, definition_types) in &report.definition_types {
-        let theory = report
-            .theory_set
-            .theories
-            .get(theory_id)
-            .ok_or_else(|| invalid_data(format!("missing theory `{theory_id}` in TheorySet")))?;
+        let theory =
+            report.theory_set.theories.get(theory_id).ok_or_else(|| {
+                invalid_data(format!("missing theory `{theory_id}` in TheorySet"))
+            })?;
         let Theory::Theory { syntax, arrows } = theory else {
             continue;
         };
@@ -35,8 +36,11 @@ pub fn dump_svgs(report: &CompileReport, dir: &Path) -> io::Result<()> {
                     "definition `{definition_name}` in theory `{theory_id}` has no body"
                 ))
             })?;
-            term.quotient()
-                .map_err(|error| invalid_data(format!("failed to quotient `{definition_name}`: {error:?}`")))?;
+            term.quotient().map_err(|error| {
+                invalid_data(format!(
+                    "failed to quotient `{definition_name}`: {error:?}`"
+                ))
+            })?;
 
             let labels: Vec<String> = node_types
                 .iter()
@@ -52,15 +56,83 @@ pub fn dump_svgs(report: &CompileReport, dir: &Path) -> io::Result<()> {
             let labelled = term
                 .with_nodes(|_| labels)
                 .ok_or_else(|| invalid_data("labels length mismatch".to_string()))?;
-            let svg = to_svg_with(&labelled, &Options::default().display().lr())?;
+            let svg = to_svg_with(&labelled, &Options::default().display().lr()).map_err(|error| {
+                io::Error::new(
+                    error.kind(),
+                    format!(
+                        "failed to render checked svg for `{theory_id}.{definition_name}`: {error}"
+                    ),
+                )
+            })?;
 
             let definition_dir = dir.join(qualified_definition_dir(theory_id, definition_name));
             fs::create_dir_all(&definition_dir)?;
-            fs::write(definition_dir.join("checked.svg"), svg)?;
+            let checked_path = definition_dir.join("checked.svg");
+            fs::write(&checked_path, svg).map_err(|error| {
+                io::Error::new(
+                    error.kind(),
+                    format!("failed to write {}: {error}", checked_path.display()),
+                )
+            })?;
+
+            if let Some(transformed) = report
+                .forgotten_closures
+                .get(theory_id)
+                .and_then(|defs| defs.get(definition_name))
+            {
+                let forget_closures_svg = render_typed_svg(transformed, syntax_theory).map_err(|error| {
+                    io::Error::new(
+                        error.kind(),
+                        format!(
+                            "failed to render forget_closures svg for `{theory_id}.{definition_name}`: {error}"
+                        ),
+                    )
+                })?;
+                let forget_closures_path = definition_dir.join("forget_closures.svg");
+                fs::write(&forget_closures_path, forget_closures_svg).map_err(|error| {
+                    io::Error::new(
+                        error.kind(),
+                        format!(
+                            "failed to write {}: {error}",
+                            forget_closures_path.display()
+                        ),
+                    )
+                })?;
+            }
         }
     }
 
     Ok(())
+}
+
+fn render_typed_svg(
+    term: &OpenHypergraph<metacat::tree::Tree<(), Operation>, Operation>,
+    syntax_theory: &Theory,
+) -> io::Result<Vec<u8>> {
+    let mut term = term.clone();
+    term.quotient().map_err(|error| {
+        invalid_data(format!(
+            "failed to quotient term for svg rendering: {error:?}"
+        ))
+    })?;
+
+    let labels: Vec<String> = term
+        .hypergraph
+        .nodes
+        .iter()
+        .map(|ty| {
+            ty.try_pretty(Some(&|op: &Operation| {
+                syntax_theory.coarity_of(op).ok_or_else(|| {
+                    invalid_data(format!("coarity lookup failed for operation `{op}`"))
+                })
+            }))
+        })
+        .collect::<Result<_, _>>()?;
+
+    let labelled = term
+        .with_nodes(|_| labels)
+        .ok_or_else(|| invalid_data("labels length mismatch".to_string()))?;
+    to_svg_with(&labelled, &Options::default().display().lr())
 }
 
 fn qualified_definition_dir(theory_id: &TheoryId, definition_name: &Operation) -> String {

@@ -28,6 +28,6 @@
   })
 
   # Additional to CMC structure
-  # (A --> B) -> (A => B)
+  # (A -> B) -> (A => B)
   (arr lift : -> -> =>)
 })

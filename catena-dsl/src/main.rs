@@ -1,6 +1,7 @@
 pub mod check;
 pub mod compile;
 pub mod elaborate;
+pub mod pass;
 pub mod report;
 
 use std::path::PathBuf;

@@ -114,6 +114,7 @@ dependencies = [
  "clap",
  "hexpr",
  "metacat",
+ "open-hypergraphs",
  "open-hypergraphs-dot",
  "thiserror",
 ]

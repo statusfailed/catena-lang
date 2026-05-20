@@ -2,20 +2,25 @@ mod svg;
 
 use std::{fs, io, path::Path};
 
-use crate::pass::forget_closures::PassOutput;
 use hexpr::Operation;
 use metacat::{
     theory::{RawTheorySet, TheoryId, TheorySet},
     tree::Tree,
 };
+use open_hypergraphs::lax::OpenHypergraph;
 use std::collections::BTreeMap;
+
+/// A definition graph whose nodes are annotated with their computed object types.
+pub type AnnotatedTerm = OpenHypergraph<Tree<(), Operation>, Operation>;
+/// Generic storage for per-theory, per-definition graph results produced by compiler passes.
+pub type TheoryTermMap = BTreeMap<TheoryId, BTreeMap<Operation, AnnotatedTerm>>;
 
 pub struct CompileReport {
     pub raw_theories: RawTheorySet,
     pub elaborated: RawTheorySet,
     pub theory_set: TheorySet,
     pub definition_types: BTreeMap<TheoryId, BTreeMap<Operation, Vec<Tree<(), Operation>>>>,
-    pub forgotten_closures: PassOutput,
+    pub forgotten_closures: TheoryTermMap,
 }
 
 impl CompileReport {

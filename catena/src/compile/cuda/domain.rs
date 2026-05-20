@@ -1,7 +1,7 @@
 use crate::{
     compile::{
         cuda::{
-            abi::CudaKernelAbi,
+            abi::{CudaAbiError, CudaKernelAbi},
             render::{CudaPrimitiveLowering, render_cuda},
         },
         program::Definition,
@@ -18,11 +18,11 @@ pub(super) struct CudaTarget<'a> {
 }
 
 impl<'a> CudaTarget<'a> {
-    pub(super) fn new(theory_set: &'a TheorySet, entry: &Definition) -> Self {
-        Self {
-            abi: CudaKernelAbi::from_definition(entry),
+    pub(super) fn new(theory_set: &'a TheorySet, entry: &Definition) -> Result<Self, CudaAbiError> {
+        Ok(Self {
+            abi: CudaKernelAbi::from_definition(entry)?,
             primitives: GenericCudaPrimitives::new(theory_set),
-        }
+        })
     }
 
     pub(super) fn render_cuda_with_launch(&self, program: &StructuredProgram) -> String {
@@ -171,6 +171,19 @@ struct GpuPrimitives;
 
 impl NamespaceLowering for GpuPrimitives {
     fn lower(&self, local: &PrimitiveLocalName<'_>, primitive: &Primitive) -> Option<Vec<String>> {
+        if local.matches(&["grid", "schedule"]) {
+            let [_grid] = primitive.inputs.as_slice() else {
+                return None;
+            };
+            let [block, thread] = primitive.outputs.as_slice() else {
+                return None;
+            };
+            return Some(vec![
+                format!("uint3 {block} = blockIdx;"),
+                format!("uint3 {thread} = threadIdx;"),
+            ]);
+        }
+
         if local.matches(&["view", "group"]) {
             let [block, thread, _block_size] = primitive.inputs.as_slice() else {
                 return None;

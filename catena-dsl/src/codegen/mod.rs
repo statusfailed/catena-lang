@@ -51,8 +51,12 @@ pub enum CodegenError {
     Ssa(#[from] SSAError),
     #[error("failed to quotient transformed term before codegen: {0:?}")]
     Quotient(open_hypergraphs::strict::vec::FiniteFunction),
-    #[error("unsupported CUDA type for node {node}: {ty}")]
-    UnsupportedType { node: usize, ty: String },
+    #[error("codegen for `{definition}` failed: type `{ty}` is unsupported in C codegen (node {node})")]
+    UnsupportedType {
+        definition: String,
+        node: usize,
+        ty: String,
+    },
 }
 
 fn codegen_definition(
@@ -70,6 +74,7 @@ fn codegen_definition(
         params.push(Param {
             ty: types::structured_param_type(&term.hypergraph.nodes[node], false).ok_or_else(|| {
                 CodegenError::UnsupportedType {
+                    definition: qualified_name.to_string(),
                     node,
                     ty: format!("{:?}", term.hypergraph.nodes[node]),
                 }
@@ -83,6 +88,7 @@ fn codegen_definition(
         params.push(Param {
             ty: types::structured_param_type(&term.hypergraph.nodes[node], true).ok_or_else(|| {
                 CodegenError::UnsupportedType {
+                    definition: qualified_name.to_string(),
                     node,
                     ty: format!("{:?}", term.hypergraph.nodes[node]),
                 }

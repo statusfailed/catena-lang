@@ -19,13 +19,27 @@ pub type TheoryTermMap = BTreeMap<TheoryId, BTreeMap<Operation, AnnotatedTerm>>;
 /// Generic storage for per-theory, per-definition structured codegen results.
 pub type StructuredProgramMap = BTreeMap<TheoryId, BTreeMap<Operation, StructuredProgram>>;
 
+#[derive(Debug)]
 pub struct CompileReport {
     pub raw_theories: RawTheorySet,
-    pub elaborated: RawTheorySet,
-    pub theory_set: TheorySet,
-    pub definition_types: BTreeMap<TheoryId, BTreeMap<Operation, Vec<Tree<(), Operation>>>>,
-    pub forgotten_closures: TheoryTermMap,
-    pub structured_programs: StructuredProgramMap,
+    pub elaborated: Option<RawTheorySet>,
+    pub theory_set: Option<TheorySet>,
+    pub definition_types: Option<BTreeMap<TheoryId, BTreeMap<Operation, Vec<Tree<(), Operation>>>>>,
+    pub forgotten_closures: Option<TheoryTermMap>,
+    pub structured_programs: Option<StructuredProgramMap>,
+}
+
+impl CompileReport {
+    pub fn new(raw_theories: RawTheorySet) -> Self {
+        Self {
+            raw_theories,
+            elaborated: None,
+            theory_set: None,
+            definition_types: None,
+            forgotten_closures: None,
+            structured_programs: None,
+        }
+    }
 }
 
 impl CompileReport {
@@ -36,7 +50,9 @@ impl CompileReport {
             dir.join("raw_theories.hex"),
             self.raw_theories.to_hexpr_text(),
         )?;
-        fs::write(dir.join("elaborated.hex"), self.elaborated.to_hexpr_text())?;
+        if let Some(elaborated) = &self.elaborated {
+            fs::write(dir.join("elaborated.hex"), elaborated.to_hexpr_text())?;
+        }
         svg::dump_svgs(self, &dir.join("svgs"))?;
         c::dump_c(self, &dir.join("c"))?;
         Ok(())

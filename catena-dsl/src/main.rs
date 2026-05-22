@@ -23,7 +23,14 @@ struct Cli {
 fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
     let raw_theories = RawTheorySet::from_files(cli.paths)?;
-    let report = compile::compile(raw_theories)?;
-    report.dump_to_dir(cli.output_dir)?;
-    Ok(())
+    match compile::compile(raw_theories) {
+        Ok(report) => {
+            report.dump_to_dir(&cli.output_dir)?;
+            Ok(())
+        }
+        Err(failure) => {
+            failure.report.dump_to_dir(&cli.output_dir)?;
+            Err(failure.into())
+        }
+    }
 }

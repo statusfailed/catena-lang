@@ -3,12 +3,17 @@ use std::{fs, io, path::Path};
 use crate::{codegen::c::render_program, report::CompileReport};
 
 pub fn dump_c(report: &CompileReport, dir: &Path) -> io::Result<()> {
+    let (Some(structured_programs), Some(forgotten_closures)) =
+        (&report.structured_programs, &report.forgotten_closures)
+    else {
+        return Ok(());
+    };
+
     fs::create_dir_all(dir)?;
 
-    for (theory_id, programs) in &report.structured_programs {
+    for (theory_id, programs) in structured_programs {
         for (definition_name, program) in programs {
-            let term = report
-                .forgotten_closures
+            let term = forgotten_closures
                 .get(theory_id)
                 .and_then(|defs| defs.get(definition_name))
                 .ok_or_else(|| {

@@ -11,6 +11,8 @@ use crate::{codegen::types, report::AnnotatedTerm};
 pub enum CRenderError {
     #[error("missing node type for `{0}`")]
     MissingNodeType(String),
+    #[error("type `{0:?}` is unsupported in C")]
+    UnsupportedType(metacat::tree::Tree<(), Operation>),
     #[error("unsupported structured statement in C renderer")]
     UnsupportedStmt,
 }
@@ -46,7 +48,15 @@ pub fn render_program(program: &StructuredProgram, term: &AnnotatedTerm) -> Resu
                         true,
                     )
                 }
-                .ok_or_else(|| CRenderError::MissingNodeType(param.name.clone()))
+                .ok_or_else(|| {
+                    let ty = if index < term.sources.len() {
+                        &term.hypergraph.nodes[term.sources[index].0]
+                    } else {
+                        let target_index = index - term.sources.len();
+                        &term.hypergraph.nodes[term.targets[target_index].0]
+                    };
+                    CRenderError::UnsupportedType(ty.clone())
+                })
             })
             .collect::<Result<Vec<_>, _>>()?
             .join(", "),
@@ -106,7 +116,7 @@ fn render_primitive(
                 .get(output)
                 .ok_or_else(|| CRenderError::MissingNodeType(output.clone()))?;
             let decl = types::c_local_decl(ty, output)
-                .ok_or_else(|| CRenderError::MissingNodeType(output.clone()))?;
+                .ok_or_else(|| CRenderError::UnsupportedType(ty.clone()))?;
             out.push_str(&format!("    {};\n", decl));
         }
     }

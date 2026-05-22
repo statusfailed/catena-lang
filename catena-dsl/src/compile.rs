@@ -10,6 +10,14 @@ use crate::{
 };
 
 #[derive(Debug, Error)]
+#[error("{cause}")]
+pub struct CompileFailure {
+    pub report: CompileReport,
+    #[source]
+    pub cause: CompileError,
+}
+
+#[derive(Debug, Error)]
 pub enum CompileError {
     #[error(transparent)]
     Elaborate(#[from] ElaborateError),
@@ -41,18 +49,29 @@ pub enum CompileError {
 // This should
 
 /// Compile all definitions from the input raw theories and collect intermediate data.
-pub fn compile(raw_theories: RawTheorySet) -> Result<CompileReport, CompileError> {
-    let elaborated = crate::elaborate::elaborate(raw_theories.clone())?;
-    let theory_set = TheorySet::from_raw(elaborated.clone())?;
+pub fn compile(raw_theories: RawTheorySet) -> Result<CompileReport, CompileFailure> {
+    let mut report = CompileReport::new(raw_theories);
+    if let Err(cause) = compile_into(&mut report) {
+        return Err(CompileFailure { report, cause });
+    }
+    Ok(report)
+}
+
+fn compile_into(report: &mut CompileReport) -> Result<(), CompileError> {
+    let elaborated = crate::elaborate::elaborate(report.raw_theories.clone())?;
+    report.elaborated = Some(elaborated.clone());
+
+    let theory_set = TheorySet::from_raw(elaborated)?;
+    report.theory_set = Some(theory_set.clone());
+
     let definition_types = crate::check::check(&theory_set)?;
+    report.definition_types = Some(definition_types.clone());
+
     let forgotten_closures = crate::pass::forget_closures::run(&theory_set, &definition_types)?;
+    report.forgotten_closures = Some(forgotten_closures.clone());
+
     let structured_programs = crate::codegen::codegen(&forgotten_closures)?;
-    Ok(CompileReport {
-        raw_theories,
-        elaborated,
-        theory_set,
-        definition_types,
-        forgotten_closures,
-        structured_programs,
-    })
+    report.structured_programs = Some(structured_programs);
+
+    Ok(())
 }

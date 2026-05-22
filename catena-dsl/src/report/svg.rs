@@ -9,18 +9,22 @@ use crate::report::CompileReport;
 
 /// Render a list of SVGs for each definition being compiled, one for each transformation phase.
 pub fn dump_svgs(report: &CompileReport, dir: &Path) -> io::Result<()> {
+    let (Some(definition_types), Some(theory_set)) = (&report.definition_types, &report.theory_set)
+    else {
+        return Ok(());
+    };
+
     fs::create_dir_all(dir)?;
 
-    for (theory_id, definition_types) in &report.definition_types {
+    for (theory_id, definition_types) in definition_types {
         let theory =
-            report.theory_set.theories.get(theory_id).ok_or_else(|| {
+            theory_set.theories.get(theory_id).ok_or_else(|| {
                 invalid_data(format!("missing theory `{theory_id}` in TheorySet"))
             })?;
         let Theory::Theory { syntax, arrows } = theory else {
             continue;
         };
-        let syntax_theory = report
-            .theory_set
+        let syntax_theory = theory_set
             .theories
             .get(syntax)
             .ok_or_else(|| invalid_data(format!("missing syntax theory `{syntax}`")))?;
@@ -77,7 +81,8 @@ pub fn dump_svgs(report: &CompileReport, dir: &Path) -> io::Result<()> {
 
             if let Some(transformed) = report
                 .forgotten_closures
-                .get(theory_id)
+                .as_ref()
+                .and_then(|theories| theories.get(theory_id))
                 .and_then(|defs| defs.get(definition_name))
             {
                 let forget_closures_svg = render_typed_svg(transformed, syntax_theory).map_err(|error| {

@@ -9,18 +9,13 @@ use crate::report::CompileReport;
 
 /// Render a list of SVGs for each definition being compiled, one for each transformation phase.
 pub fn dump_svgs(report: &CompileReport, dir: &Path) -> io::Result<()> {
-    let (Some(definition_types), Some(theory_set)) = (&report.definition_types, &report.theory_set)
-    else {
+    let Some(theory_set) = &report.theory_set else {
         return Ok(());
     };
 
     fs::create_dir_all(dir)?;
 
-    for (theory_id, definition_types) in definition_types {
-        let theory =
-            theory_set.theories.get(theory_id).ok_or_else(|| {
-                invalid_data(format!("missing theory `{theory_id}` in TheorySet"))
-            })?;
+    for (theory_id, theory) in &theory_set.theories {
         let Theory::Theory { syntax, arrows } = theory else {
             continue;
         };
@@ -29,17 +24,41 @@ pub fn dump_svgs(report: &CompileReport, dir: &Path) -> io::Result<()> {
             .get(syntax)
             .ok_or_else(|| invalid_data(format!("missing syntax theory `{syntax}`")))?;
 
-        for (definition_name, node_types) in definition_types {
-            let arrow = arrows.get(definition_name).ok_or_else(|| {
-                invalid_data(format!(
-                    "missing definition `{definition_name}` in theory `{theory_id}`"
-                ))
+        for (definition_name, arrow) in arrows {
+            let Some(term) = &arrow.definition else {
+                continue;
+            };
+
+            let definition_dir = dir.join(qualified_definition_dir(theory_id, definition_name));
+            fs::create_dir_all(&definition_dir)?;
+
+            let elaborated_svg = render_untyped_svg(term).map_err(|error| {
+                io::Error::new(
+                    error.kind(),
+                    format!(
+                        "failed to render elaborated svg for `{theory_id}.{definition_name}`: {error}"
+                    ),
+                )
             })?;
-            let mut term = arrow.definition.clone().ok_or_else(|| {
-                invalid_data(format!(
-                    "definition `{definition_name}` in theory `{theory_id}` has no body"
-                ))
+            let elaborated_path = definition_dir.join("elaborated.svg");
+            fs::write(&elaborated_path, elaborated_svg).map_err(|error| {
+                io::Error::new(
+                    error.kind(),
+                    format!("failed to write {}: {error}", elaborated_path.display()),
+                )
             })?;
+
+            let Some(definition_types) = &report.definition_types else {
+                continue;
+            };
+            let Some(node_types) = definition_types
+                .get(theory_id)
+                .and_then(|defs| defs.get(definition_name))
+            else {
+                continue;
+            };
+
+            let mut term = term.clone();
             term.quotient().map_err(|error| {
                 invalid_data(format!(
                     "failed to quotient `{definition_name}`: {error:?}`"
@@ -69,8 +88,6 @@ pub fn dump_svgs(report: &CompileReport, dir: &Path) -> io::Result<()> {
                 )
             })?;
 
-            let definition_dir = dir.join(qualified_definition_dir(theory_id, definition_name));
-            fs::create_dir_all(&definition_dir)?;
             let checked_path = definition_dir.join("checked.svg");
             fs::write(&checked_path, svg).map_err(|error| {
                 io::Error::new(
@@ -108,6 +125,20 @@ pub fn dump_svgs(report: &CompileReport, dir: &Path) -> io::Result<()> {
     }
 
     Ok(())
+}
+
+fn render_untyped_svg(term: &OpenHypergraph<(), Operation>) -> io::Result<Vec<u8>> {
+    let mut term = term.clone();
+    term.quotient().map_err(|error| {
+        invalid_data(format!(
+            "failed to quotient term for svg rendering: {error:?}"
+        ))
+    })?;
+    let labels = vec![String::new(); term.hypergraph.nodes.len()];
+    let labelled = term
+        .with_nodes(|_| labels)
+        .ok_or_else(|| invalid_data("labels length mismatch".to_string()))?;
+    to_svg_with(&labelled, &Options::default().display().lr())
 }
 
 fn render_typed_svg(

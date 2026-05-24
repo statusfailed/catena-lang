@@ -1,10 +1,28 @@
 # goal: generate StructuredProgram from this which ends up like
 # void not(x0: bool, x1: *bool) { ... }
 # note: return values are always passed as ptrs
+
+# TODO remove/fix
 (def program id : [a] -> [a] = [x])
 (def program copy : [a] -> [a . a a] = [x . x x])
+
+# Boolean examples
 (def program not : bool -> bool = bool.not)
 (def program run-not : bool -> bool = ({defer (name.bool.not lift)} compose run))
 
-# A closure of (copy ; and), requiring its first argument.
+# A closure of (copy ; and).
+# NOTE: this takes a type argument as the first metavar; but current type
+# system conflacts 'type value' with 'value of type' - to be fixed!
 (def program run-copy-and-closure : bool -> ({bool bool} =>) = ({(name.copy lift) (name.bool.and lift)} compose))
+
+# Partial application of 'and' to its first arg.
+(def program partial-and-closure : bool -> ({bool bool} =>) = (
+  {
+    (
+      {defer (name.bool.id lift)}
+      tensor
+    )
+    (name.bool.and lift)
+  }
+  compose
+))

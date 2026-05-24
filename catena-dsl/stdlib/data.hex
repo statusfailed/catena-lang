@@ -12,6 +12,9 @@
   (arr bool.type : [] -> (bool type))
 
   # Boolean operations
+  (arr bool.t : [] -> bool)
+  (arr bool.f : [] -> bool)
+
   (arr bool.not : bool -> bool)
   (arr bool.or  : {bool bool} -> bool)
   (arr bool.and : {bool bool} -> bool)
@@ -25,5 +28,6 @@
   # temp helpers until we add polymorphic versions
   # unitors and associators for bools only
   (arr bool.id : bool -> bool)
+  (arr bool.copy : bool -> {bool bool})
   (def bool.li : bool -> {1 bool} = {unit.intro [a]})
 })

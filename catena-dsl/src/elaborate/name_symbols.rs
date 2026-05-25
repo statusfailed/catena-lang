@@ -21,7 +21,7 @@ pub fn elaborate_theory(
     let theory = raw
         .theories
         .get(theory_name)
-        .expect("requested theory should exist");
+        .ok_or_else(|| ElaborateError::MissingTheory(theory_name.to_string()))?;
 
     let syntax_theory_name = theory.syntax_category.clone();
     let raw_syntax_dependencies = transitive_dependency_subset([syntax_theory_name.clone()], raw)?;
@@ -29,55 +29,92 @@ pub fn elaborate_theory(
     let syntax = syntax_dependencies
         .theories
         .get(&TheoryId(syntax_theory_name))
-        .expect("interpreted syntax theory should exist");
+        .ok_or_else(|| {
+            ElaborateError::MissingInterpretedSyntaxTheory(theory.syntax_category.to_string())
+        })?;
 
     let theory = raw
         .theories
         .get_mut(theory_name)
-        .expect("requested theory should exist");
-    elaborate_theory_with_interpreted_syntax(theory, syntax);
+        .ok_or_else(|| ElaborateError::MissingTheory(theory_name.to_string()))?;
+    elaborate_theory_with_interpreted_syntax(theory, syntax)?;
     Ok(())
 }
 
-fn elaborate_theory_with_interpreted_syntax(raw: &mut RawTheory, syntax: &Theory) {
+fn elaborate_theory_with_interpreted_syntax(
+    raw: &mut RawTheory,
+    syntax: &Theory,
+) -> Result<(), ElaborateError> {
     let mut new_arrows = Vec::new();
     for arrow in raw.arrows.values() {
-        new_arrows.push(name_arrow(syntax, arrow));
+        new_arrows.push(name_arrow(syntax, &raw.name, arrow)?);
     }
 
     for arrow in new_arrows {
         raw.arrows.insert(arrow.name.clone(), arrow);
     }
+    Ok(())
 }
 
-fn name_arrow(syntax: &Theory, raw: &RawTheoryArrow) -> RawTheoryArrow {
-    RawTheoryArrow {
-        name: format!("{NAME_PREFIX}{}", raw.name)
-            .parse()
-            .expect("generated operation name should satisfy hexpr operation syntax"),
-        type_maps: (source_type_map(syntax, raw), target_type_map(syntax, raw)),
+fn name_arrow(
+    syntax: &Theory,
+    theory_name: &Operation,
+    raw: &RawTheoryArrow,
+) -> Result<RawTheoryArrow, ElaborateError> {
+    Ok(RawTheoryArrow {
+        name: parse_operation(&format!("{NAME_PREFIX}{}", raw.name))?,
+        type_maps: (
+            source_type_map(syntax, theory_name, raw)?,
+            target_type_map(syntax, theory_name, raw)?,
+        ),
         definition: None,
-    }
+    })
 }
 
-fn source_type_map(syntax: &Theory, raw: &RawTheoryArrow) -> Hexpr {
-    let interpreted_source = try_interpret(&syntax.local_signature(), &raw.type_maps.0)
-        .expect("raw source type map should interpret in the provided syntax theory");
-    let metavars = vars("x", interpreted_source.sources.len());
+fn source_type_map(
+    syntax: &Theory,
+    theory_name: &Operation,
+    raw: &RawTheoryArrow,
+) -> Result<Hexpr, ElaborateError> {
+    let interpreted_source = try_interpret(&syntax.local_signature(), &raw.type_maps.0).map_err(
+        |error| ElaborateError::NameSourceTypeMapInterpretation {
+            theory: theory_name.to_string(),
+            arrow: raw.name.to_string(),
+            map: raw.type_maps.0.clone(),
+            error,
+        },
+    )?;
+    let metavars = vars("x", interpreted_source.sources.len())?;
 
-    Hexpr::Frobenius {
+    Ok(Hexpr::Frobenius {
         sources: metavars.clone(),
         targets: metavars,
-    }
+    })
 }
 
-fn target_type_map(syntax: &Theory, raw: &RawTheoryArrow) -> Hexpr {
-    let interpreted_source = try_interpret(&syntax.local_signature(), &raw.type_maps.0)
-        .expect("raw source type map should interpret in the provided syntax theory");
-    let interpreted_target = try_interpret(&syntax.local_signature(), &raw.type_maps.1)
-        .expect("raw target type map should interpret in the provided syntax theory");
+fn target_type_map(
+    syntax: &Theory,
+    theory_name: &Operation,
+    raw: &RawTheoryArrow,
+) -> Result<Hexpr, ElaborateError> {
+    let interpreted_source = try_interpret(&syntax.local_signature(), &raw.type_maps.0).map_err(
+        |error| ElaborateError::NameSourceTypeMapInterpretation {
+            theory: theory_name.to_string(),
+            arrow: raw.name.to_string(),
+            map: raw.type_maps.0.clone(),
+            error,
+        },
+    )?;
+    let interpreted_target = try_interpret(&syntax.local_signature(), &raw.type_maps.1).map_err(
+        |error| ElaborateError::NameTargetTypeMapInterpretation {
+            theory: theory_name.to_string(),
+            arrow: raw.name.to_string(),
+            map: raw.type_maps.1.clone(),
+            error,
+        },
+    )?;
 
-    let metavars = vars("x", interpreted_source.sources.len());
+    let metavars = vars("x", interpreted_source.sources.len())?;
     let mut copied_metavars = metavars.clone();
     copied_metavars.extend(metavars.clone());
     let copy = Hexpr::Frobenius {
@@ -87,50 +124,57 @@ fn target_type_map(syntax: &Theory, raw: &RawTheoryArrow) -> Hexpr {
 
     let pack_s = Hexpr::Composition(vec![
         raw.type_maps.0.clone(),
-        pack_object(interpreted_source.targets.len()),
+        pack_object(interpreted_source.targets.len())?,
     ]);
     let pack_t = Hexpr::Composition(vec![
         raw.type_maps.1.clone(),
-        pack_object(interpreted_target.targets.len()),
+        pack_object(interpreted_target.targets.len())?,
     ]);
 
-    Hexpr::Composition(vec![copy, Hexpr::Tensor(vec![pack_s, pack_t]), op(FN_TYPE)])
+    Ok(Hexpr::Composition(vec![
+        copy,
+        Hexpr::Tensor(vec![pack_s, pack_t]),
+        parse_operation_hexpr(FN_TYPE)?,
+    ]))
 }
 
-fn pack_object(object_size: usize) -> Hexpr {
+fn pack_object(object_size: usize) -> Result<Hexpr, ElaborateError> {
     match object_size {
-        0 => op(UNIT_TYPE),
+        0 => parse_operation_hexpr(UNIT_TYPE),
         1 => identity_var("x0"),
-        2 => op(PRODUCT_TYPE),
-        n => Hexpr::Composition(vec![
+        2 => parse_operation_hexpr(PRODUCT_TYPE),
+        n => Ok(Hexpr::Composition(vec![
             Hexpr::Tensor(vec![
-                pack_object(n - 1),
-                identity_var(&format!("x{}", n - 1)),
+                pack_object(n - 1)?,
+                identity_var(&format!("x{}", n - 1))?,
             ]),
-            op(PRODUCT_TYPE),
-        ]),
+            parse_operation_hexpr(PRODUCT_TYPE)?,
+        ])),
     }
 }
 
-fn vars(prefix: &str, arity: usize) -> Vec<Variable> {
-    (0..arity).map(|i| var(&format!("{prefix}{i}"))).collect()
+fn vars(prefix: &str, arity: usize) -> Result<Vec<Variable>, ElaborateError> {
+    (0..arity).map(|i| parse_variable(&format!("{prefix}{i}"))).collect()
 }
 
-fn var(name: &str) -> Variable {
+fn parse_variable(name: &str) -> Result<Variable, ElaborateError> {
     name.parse()
-        .expect("generated variable should satisfy hexpr variable syntax")
+        .map_err(|_| ElaborateError::InvalidGeneratedVariable(name.to_string()))
 }
 
-fn identity_var(name: &str) -> Hexpr {
-    Hexpr::Frobenius {
-        sources: vec![var(name)],
-        targets: vec![var(name)],
-    }
+fn identity_var(name: &str) -> Result<Hexpr, ElaborateError> {
+    let var = parse_variable(name)?;
+    Ok(Hexpr::Frobenius {
+        sources: vec![var.clone()],
+        targets: vec![var],
+    })
 }
 
-fn op(name: &str) -> Hexpr {
-    Hexpr::Operation(
-        name.parse::<Operation>()
-            .expect("generated operation should satisfy hexpr operation syntax"),
-    )
+fn parse_operation(name: &str) -> Result<Operation, ElaborateError> {
+    name.parse::<Operation>()
+        .map_err(|_| ElaborateError::InvalidGeneratedOperation(name.to_string()))
+}
+
+fn parse_operation_hexpr(name: &str) -> Result<Hexpr, ElaborateError> {
+    Ok(Hexpr::Operation(parse_operation(name)?))
 }

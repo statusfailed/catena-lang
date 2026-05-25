@@ -1,7 +1,8 @@
 # basic datatypes
-(theory type nat { 
-  # type literals
-  (arr type : 1 -> 1)
+(theory type nat {
+  # anonymous runtime values.
+  # val(t) ~= "a runtime value of type t"
+  (arr val : 1 -> 1)
 
   # booleans
   (arr bool : 0 -> 1)
@@ -9,38 +10,40 @@
 
 (theory program type {
   # Boolean type literal.
-  (arr bool.type : [] -> (bool type))
+  (arr bool.type : [] -> bool)
 
   # Boolean operations
-  (arr bool.t : [] -> bool)
-  (arr bool.f : [] -> bool)
+  (arr bool.t : [] -> (bool val))
+  (arr bool.f : [] -> (bool val))
 
-  (arr bool.not : bool -> bool)
-  (arr bool.or  : {bool bool} -> bool)
-  (arr bool.and : {bool bool} -> bool)
+  (arr bool.not : (bool val) -> (bool val))
+  (arr bool.or  : {(bool val) (bool val)} -> (bool val))
+  (arr bool.and : {(bool val) (bool val)} -> (bool val))
 
   # execute one of two *closures* depending on a boolean flag
   #
   #   if : 2 ● (A => B) ● (A => B) -> (A => B)
-  (arr bool.if : {bool =>} -> =>)
+  (arr bool.if : {bool (=> val)} -> (=> val))
 
   # Execute one of two *converted closures* depending on a flag
   # (A "converted closure" is an explicit environment plus a fn pointer)
   #
   #   ifc : X ● (X * A -> B) ● Y ● (Y * A -> B) ● Bool ● A -> B
+  #
+  # (shorthand above assumes everything wrapped in `Value`)
   (arr bool.ifc : {[x y a b.]
-    [.x]
-    ([.x a] {* [.b]} ->)
-    [.y]
-    ([.y a] {* [.b]} ->)
-    bool
-    [.a]
-  } -> [x y a b . b])
+    ([.x] val)
+    ([.x a] {* [.b]} -> val)
+    ([.y] val)
+    ([.y a] {* [.b]} -> val)
+    (bool val)
+    ([.a] val)
+  } -> ([x y a b . b] val))
 
 
   # temp helpers until we add polymorphic versions
   # unitors and associators for bools only
-  (arr bool.id : bool -> bool)
-  (arr bool.copy : bool -> {bool bool})
-  (def bool.li : bool -> {1 bool} = {unit.intro [a]})
+  (arr bool.id : (bool val) -> (bool val))
+  (arr bool.copy : (bool val) -> {(bool val) (bool val)})
+  (def bool.li : (bool val) -> {1 (bool val)} = {unit.intro [a]})
 })

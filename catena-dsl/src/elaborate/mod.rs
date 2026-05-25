@@ -1,6 +1,8 @@
 mod name_symbols;
 
+use hexpr::{Hexpr, interpret::Error as HexprInterpretError};
 use metacat::theory::{GraphError, RawTheorySet, ast::ExtensionsError};
+use metacat::theory::model::SignatureError;
 use thiserror::Error;
 
 const NAT_THEORY: &str = "nat";
@@ -13,6 +15,28 @@ pub enum ElaborateError {
     Graph(#[from] GraphError),
     #[error(transparent)]
     Load(#[from] metacat::theory::LoadError),
+    #[error("missing theory `{0}` during elaboration")]
+    MissingTheory(String),
+    #[error("missing interpreted syntax theory `{0}` during elaboration")]
+    MissingInterpretedSyntaxTheory(String),
+    #[error("generated operation name `{0}` is invalid")]
+    InvalidGeneratedOperation(String),
+    #[error("generated variable name `{0}` is invalid")]
+    InvalidGeneratedVariable(String),
+    #[error("failed to interpret source type map for `name.{theory}.{arrow}` from `{map}`: {error}")]
+    NameSourceTypeMapInterpretation {
+        theory: String,
+        arrow: String,
+        map: Hexpr,
+        error: HexprInterpretError<SignatureError>,
+    },
+    #[error("failed to interpret target type map for `name.{theory}.{arrow}` from `{map}`: {error}")]
+    NameTargetTypeMapInterpretation {
+        theory: String,
+        arrow: String,
+        map: Hexpr,
+        error: HexprInterpretError<SignatureError>,
+    },
 }
 
 pub fn elaborate(mut raw: RawTheorySet) -> Result<RawTheorySet, ElaborateError> {

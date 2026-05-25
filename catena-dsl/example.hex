@@ -7,27 +7,35 @@
 (def program run-not : bool -> bool = ({defer (name.bool.not lift)} compose run))
 
 ########################################
+# Minimal packed-product example.
+# This returns one value of type (1 * bool), not two free tensor outputs.
+(def program run-li : [] -> ({1 bool} *) = (
+  {(bool.t defer) (name.bool.li lift)}
+  compose
+  run
+))
+
 # Tests that product types can be synthesized
 (def program test-name.bool.li : [] -> ( {bool ({1 bool} *)} -> ) = name.bool.li)
 
 # Test that a product type inside another program synthesizes
-#(def program run-copy : [] -> ({bool bool} *) = (
-  #{(bool.t defer) (name.bool.copy lift)}
-  #compose
-  #run
-#))
+(def program run-copy : [] -> ({bool bool} *) = (
+  {(bool.t defer) (name.bool.copy lift)}
+  compose
+  run
+))
 
 
 # Partial application of 'and' to its first arg.
-#(def program partial-and-closure : bool -> ({bool bool} =>) = (
-  #{
-    #(
-      #{defer (name.bool.id lift)}
-      #tensor
-    #)
-    #(name.bool.and lift)
-  #}
-  #compose
-  #{(name.bool.li lift) [f]}
-  #compose
-#))
+(def program partial-and-closure : bool -> ({bool bool} =>) = (
+  {
+    (
+      {defer (name.bool.id lift)}
+      tensor
+    )
+    (name.bool.and lift)
+  }
+  compose
+  {(name.bool.li lift) [f]}
+  compose
+))

@@ -17,25 +17,53 @@ In fact, this can be factored into something simpler: a *selector* function:
 
 One can then encode `if` by substituting `X = (A => B)`.
 
-## Implementing Select
+Note here a slight subtlety: `A => B` is a *closure* with an implicit set of
+bound variables.
+If we expand the two closures, we could get different bound variables,
+which we'll denote `X` and `Y`.
+Observe then what happens to `select`:
 
-So how should we implement
+    select : Bool ● (X, X ● A -> B) ● (Y, Y ● A -> B) -> (???, ??? ● A -> B)
 
-    s_X : Bool ● X ● X -> X
+We want to *return* a closure, but it's not possible: the return type now
+*depends* on the value of the bool!
 
-Naively, we can codegen this as something like
+Can we solve this with dependent types?
+Only if we have a notion of 'if' statement in the *type* level too!
 
-    def select(b, f, g):
-        if b then f else g
+    select : (b : Bool) ● (f : (X, X ● A -> B)) ● (g : (Y, Y ● A -> B)) -> (b ? X : Y, b ? X : Y ● A -> B)
 
-However, this interacts badly with the *function
+However, this is *still* problematic:
 
-## Closure Conversion
+- This is specialised to function types- it doesn't arise from substitution of the `X` in `s_X`!
+    - i.e., as a functor it is not well defined
+    - conceptually we have a functor the other way: *hiding* closure envs quotients closures to `=>`
+    - it's like an "unquotient" on types!
+- Lowering `select` must be done as a special case during closure conversion!
 
+Note also this makes our `if` become dependent too:
 
+    if : (f : (X, X ● A -> B)) ● (g : (Y, Y ● A -> B)) ● Bool ● (b ? X : Y) ● A -> B
 
-When a definition is made having function boundaries, we would like to
-transform it into one accepting a function *pointer* and a list of
-explicit arguments - essentially an explicitly-encoded closure.
+## A simpler approach: native `if`
 
-So for example, suppose 
+Regard the "closure-typed" `if` as above
+
+    if : (A => B) ● (A => B) ● Bool ● A -> B
+
+Then closure conversion gives us
+
+    if : (X, X ● A -> B) ● (Y, Y ● A -> B) ● Bool ● A -> B
+
+Then, assuming monomorphisation, codegen for native if is something like this
+(types omitted):
+
+```c
+void if(x, f, y, g, flag, a, *result) {
+    if(flag) {
+        *result = f(x, a)
+    } else {
+        *result = g(y, a)
+    }
+}
+```

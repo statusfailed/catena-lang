@@ -74,6 +74,8 @@ pub fn render_program(program: &StructuredProgram, term: &AnnotatedTerm) -> Resu
 fn runtime_prelude() -> &'static str {
     r#"#include <stdint.h>
 
+typedef uint8_t catena_unit_t;
+
 static inline uint8_t bool_not(uint8_t arg0) {
     return !arg0;
 }
@@ -136,8 +138,14 @@ fn render_primitive(
             let Some((func, args)) = primitive.inputs.split_last() else {
                 return Err(CRenderError::UnsupportedStmt);
             };
-            let [output] = primitive.outputs.as_slice() else { return Err(CRenderError::UnsupportedStmt) };
-            out.push_str(&format!("    {output} = {func}({});\n", args.join(", ")));
+            let mut call_args = args.to_vec();
+            let mut output_ptrs = primitive
+                .outputs
+                .iter()
+                .map(|output| format!("&{output}"))
+                .collect::<Vec<_>>();
+            call_args.append(&mut output_ptrs);
+            out.push_str(&format!("    {func}({});\n", call_args.join(", ")));
         }
         _ if primitive.name.starts_with("name.") => {
             let [output] = primitive.outputs.as_slice() else { return Err(CRenderError::UnsupportedStmt) };

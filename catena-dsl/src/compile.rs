@@ -1,12 +1,11 @@
-use metacat::theory::{RawTheorySet, TheorySet};
+use hexpr::Operation;
+use metacat::theory::{RawTheorySet, Theory, TheorySet};
+use open_hypergraphs::lax::OpenHypergraph;
 use thiserror::Error;
 
 use crate::{
-    check::CheckError,
-    codegen::CodegenError,
-    elaborate::ElaborateError,
-    pass::forget_closures::ForgetClosuresError,
-    report::CompileReport,
+    check::CheckError, codegen::CodegenError, elaborate::ElaborateError,
+    pass::forget_closures::ForgetClosuresError, report::CompileReport,
 };
 
 #[derive(Debug, Error)]
@@ -25,6 +24,10 @@ pub enum CompileError {
     Load(#[from] metacat::theory::LoadError),
     #[error(transparent)]
     Check(#[from] CheckError),
+    #[error(
+        "definition `{theory}.{definition}` has closure type `=>` on its global interface; linear closure types are only allowed adjacent to CMC operations"
+    )]
+    ClosureOnGlobalInterface { theory: String, definition: String },
     #[error(transparent)]
     ForgetClosures(#[from] ForgetClosuresError),
     #[error(transparent)]
@@ -67,6 +70,8 @@ fn compile_into(report: &mut CompileReport) -> Result<(), CompileError> {
     let definition_types = crate::check::check(&theory_set)?;
     report.definition_types = Some(definition_types.clone());
 
+    reject_closure_global_interfaces(&theory_set)?;
+
     let forgotten_closures = crate::pass::forget_closures::run(&theory_set, &definition_types)?;
     report.forgotten_closures = Some(forgotten_closures.clone());
 
@@ -74,4 +79,37 @@ fn compile_into(report: &mut CompileReport) -> Result<(), CompileError> {
     report.structured_programs = Some(structured_programs);
 
     Ok(())
+}
+
+fn reject_closure_global_interfaces(theory_set: &TheorySet) -> Result<(), CompileError> {
+    for (theory_id, theory) in &theory_set.theories {
+        let Theory::Theory { arrows, .. } = theory else {
+            continue;
+        };
+
+        for (definition_name, arrow) in arrows {
+            if arrow.definition.is_none() {
+                continue;
+            }
+
+            if contains_closure_type_map(&arrow.type_maps.0)
+                || contains_closure_type_map(&arrow.type_maps.1)
+            {
+                return Err(CompileError::ClosureOnGlobalInterface {
+                    theory: theory_id.to_string(),
+                    definition: definition_name.to_string(),
+                });
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn contains_closure_type_map(type_map: &OpenHypergraph<(), Operation>) -> bool {
+    type_map
+        .hypergraph
+        .edges
+        .iter()
+        .any(|op| op.as_str() == "=>")
 }

@@ -38,13 +38,16 @@ pub fn c_param_decl(obj: &Tree<(), Operation>, name: &str, by_pointer: bool) -> 
 /// `bool` with name `x3` becomes `uint8_t x3`
 ///
 /// Example:
-/// `(bool -> bool)` with name `f` becomes `uint8_t (*f)(uint8_t arg0)`
+/// `(bool -> bool)` with name `f` becomes `void (*f)(uint8_t arg0, uint8_t *out0)`
 pub fn c_local_decl(obj: &Tree<(), Operation>, name: &str) -> Option<String> {
     declaration(obj, name)
 }
 
 fn scalar_type(obj: &Tree<(), Operation>) -> Option<String> {
     match obj {
+        Tree::Node(op, 0, children) if op.as_str() == "1" && children.is_empty() => {
+            Some("catena_unit_t".to_string())
+        }
         Tree::Node(op, 0, children) if op.as_str() == "bool" && children.is_empty() => {
             Some("uint8_t".to_string())
         }
@@ -64,6 +67,9 @@ fn scalar_type(obj: &Tree<(), Operation>) -> Option<String> {
 
 fn declaration(obj: &Tree<(), Operation>, name: &str) -> Option<String> {
     match obj {
+        Tree::Node(op, 0, children) if op.as_str() == "1" && children.is_empty() => {
+            Some(format!("catena_unit_t {name}"))
+        }
         Tree::Node(op, 0, children) if op.as_str() == "bool" && children.is_empty() => {
             Some(format!("uint8_t {name}"))
         }
@@ -71,24 +77,33 @@ fn declaration(obj: &Tree<(), Operation>, name: &str) -> Option<String> {
             let [source, target] = children.as_slice() else {
                 return None;
             };
-            let return_ty = scalar_type(target)?;
-            let params = c_param_list(source)?;
-            Some(format!("{return_ty} (*{name})({params})"))
+            let params = c_fn_param_list(source, target)?;
+            Some(format!("void (*{name})({params})"))
         }
         _ => None,
     }
 }
 
-fn c_param_list(obj: &Tree<(), Operation>) -> Option<String> {
-    let args = flatten_product(obj);
-    if args.is_empty() {
-        return Some("void".to_string());
-    }
-    args.into_iter()
+fn c_fn_param_list(source: &Tree<(), Operation>, target: &Tree<(), Operation>) -> Option<String> {
+    let mut parts = flatten_product(source)
+        .into_iter()
         .enumerate()
         .map(|(index, arg)| declaration(arg, &format!("arg{index}")))
-        .collect::<Option<Vec<_>>>()
-        .map(|parts| parts.join(", "))
+        .collect::<Option<Vec<_>>>()?;
+
+    let source_len = parts.len();
+    let mut outputs = flatten_product(target)
+        .into_iter()
+        .enumerate()
+        .map(|(index, arg)| c_param_decl(arg, &format!("out{}", source_len + index), true))
+        .collect::<Option<Vec<_>>>()?;
+    parts.append(&mut outputs);
+
+    if parts.is_empty() {
+        Some("void".to_string())
+    } else {
+        Some(parts.join(", "))
+    }
 }
 
 fn flatten_product<'a>(obj: &'a Tree<(), Operation>) -> Vec<&'a Tree<(), Operation>> {
@@ -138,6 +153,10 @@ fn sanitize_ident(value: &str) -> String {
 mod tests {
     use super::*;
 
+    fn unit_type() -> Tree<(), Operation> {
+        Tree::Node("1".parse().unwrap(), 0, vec![])
+    }
+
     fn bool_type() -> Tree<(), Operation> {
         Tree::Node("bool".parse().unwrap(), 0, vec![])
     }
@@ -160,15 +179,32 @@ mod tests {
     }
 
     #[test]
+    fn unit_type_renders_as_concrete_c_type() {
+        let ty = unit_type();
+        assert_eq!(
+            structured_param_type(&ty, false).as_deref(),
+            Some("catena_unit_t")
+        );
+        assert_eq!(
+            c_param_decl(&ty, "u", false).as_deref(),
+            Some("catena_unit_t u")
+        );
+        assert_eq!(
+            c_local_decl(&ty, "tmp").as_deref(),
+            Some("catena_unit_t tmp")
+        );
+    }
+
+    #[test]
     fn c_declarations_render_function_pointer_types() {
         let ty = fn_ptr_type(bool_type(), bool_type());
         assert_eq!(
             c_param_decl(&ty, "f", false).as_deref(),
-            Some("uint8_t (*f)(uint8_t arg0)")
+            Some("void (*f)(uint8_t arg0, uint8_t *out1)")
         );
         assert_eq!(
             c_local_decl(&ty, "tmp").as_deref(),
-            Some("uint8_t (*tmp)(uint8_t arg0)")
+            Some("void (*tmp)(uint8_t arg0, uint8_t *out1)")
         );
     }
 }

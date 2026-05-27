@@ -4,7 +4,7 @@ use open_hypergraphs::lax::OpenHypergraph;
 use thiserror::Error;
 
 use crate::{
-    check::CheckError, codegen::CodegenError, elaborate::ElaborateError,
+    check::{CheckError, partial_definition_types}, codegen::CodegenError, elaborate::ElaborateError,
     pass::forget_closures::ForgetClosuresError, report::CompileReport,
 };
 
@@ -67,7 +67,13 @@ fn compile_into(report: &mut CompileReport) -> Result<(), CompileError> {
     let theory_set = TheorySet::from_raw(elaborated)?;
     report.theory_set = Some(theory_set.clone());
 
-    let definition_types = crate::check::check(&theory_set)?;
+    let definition_types = match crate::check::check(&theory_set) {
+        Ok(definition_types) => definition_types,
+        Err(error) => {
+            report.partial_definition_types = partial_definition_types(&error);
+            return Err(error.into());
+        }
+    };
     report.definition_types = Some(definition_types.clone());
 
     reject_closure_global_interfaces(&theory_set)?;

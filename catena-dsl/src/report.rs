@@ -12,6 +12,8 @@ use metacat::{
 use open_hypergraphs::lax::OpenHypergraph;
 use std::collections::BTreeMap;
 
+use crate::check::PartialDefinitionTypes;
+
 /// A definition graph whose nodes are annotated with their computed object types.
 pub type AnnotatedTerm = OpenHypergraph<Tree<(), Operation>, Operation>;
 /// Generic storage for per-theory, per-definition graph results produced by compiler passes.
@@ -25,6 +27,7 @@ pub struct CompileReport {
     pub elaborated: Option<RawTheorySet>,
     pub theory_set: Option<TheorySet>,
     pub definition_types: Option<BTreeMap<TheoryId, BTreeMap<Operation, Vec<Tree<(), Operation>>>>>,
+    pub partial_definition_types: Option<PartialDefinitionTypes>,
     pub forgotten_closures: Option<TheoryTermMap>,
     pub structured_programs: Option<StructuredProgramMap>,
 }
@@ -36,6 +39,7 @@ impl CompileReport {
             elaborated: None,
             theory_set: None,
             definition_types: None,
+            partial_definition_types: None,
             forgotten_closures: None,
             structured_programs: None,
         }

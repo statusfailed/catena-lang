@@ -48,53 +48,53 @@ pub fn dump_svgs(report: &CompileReport, dir: &Path) -> io::Result<()> {
                 )
             })?;
 
-            let Some(definition_types) = &report.definition_types else {
-                continue;
-            };
-            let Some(node_types) = definition_types
-                .get(theory_id)
+            if let Some(node_types) = report
+                .definition_types
+                .as_ref()
+                .and_then(|defs| defs.get(theory_id))
                 .and_then(|defs| defs.get(definition_name))
-            else {
-                continue;
-            };
+            {
+                let svg = render_check_result_svg(term, node_types, syntax_theory).map_err(|error| {
+                    io::Error::new(
+                        error.kind(),
+                        format!(
+                            "failed to render checked svg for `{theory_id}.{definition_name}`: {error}"
+                        ),
+                    )
+                })?;
 
-            let mut term = term.clone();
-            term.quotient().map_err(|error| {
-                invalid_data(format!(
-                    "failed to quotient `{definition_name}`: {error:?}`"
-                ))
-            })?;
+                let checked_path = definition_dir.join("checked.svg");
+                fs::write(&checked_path, svg).map_err(|error| {
+                    io::Error::new(
+                        error.kind(),
+                        format!("failed to write {}: {error}", checked_path.display()),
+                    )
+                })?;
+            }
 
-            let labels: Vec<String> = node_types
-                .iter()
-                .map(|ty| {
-                    ty.try_pretty(Some(&|op: &Operation| {
-                        syntax_theory.coarity_of(op).ok_or_else(|| {
-                            invalid_data(format!("coarity lookup failed for operation `{op}`"))
-                        })
-                    }))
-                })
-                .collect::<Result<_, _>>()?;
+            if let Some(node_types) = report
+                .partial_definition_types
+                .as_ref()
+                .and_then(|defs| defs.get(theory_id))
+                .and_then(|defs| defs.get(definition_name))
+            {
+                let svg = render_partial_check_result_svg(term, node_types, syntax_theory).map_err(|error| {
+                    io::Error::new(
+                        error.kind(),
+                        format!(
+                            "failed to render partial check svg for `{theory_id}.{definition_name}`: {error}"
+                        ),
+                    )
+                })?;
 
-            let labelled = term
-                .with_nodes(|_| labels)
-                .ok_or_else(|| invalid_data("labels length mismatch".to_string()))?;
-            let svg = to_svg_with(&labelled, &Options::default().display().lr()).map_err(|error| {
-                io::Error::new(
-                    error.kind(),
-                    format!(
-                        "failed to render checked svg for `{theory_id}.{definition_name}`: {error}"
-                    ),
-                )
-            })?;
-
-            let checked_path = definition_dir.join("checked.svg");
-            fs::write(&checked_path, svg).map_err(|error| {
-                io::Error::new(
-                    error.kind(),
-                    format!("failed to write {}: {error}", checked_path.display()),
-                )
-            })?;
+                let checked_path = definition_dir.join("check_partial.svg");
+                fs::write(&checked_path, svg).map_err(|error| {
+                    io::Error::new(
+                        error.kind(),
+                        format!("failed to write {}: {error}", checked_path.display()),
+                    )
+                })?;
+            }
 
             if let Some(transformed) = report
                 .forgotten_closures
@@ -125,6 +125,50 @@ pub fn dump_svgs(report: &CompileReport, dir: &Path) -> io::Result<()> {
     }
 
     Ok(())
+}
+
+fn render_check_result_svg(
+    term: &OpenHypergraph<(), Operation>,
+    node_types: &[metacat::tree::Tree<(), Operation>],
+    syntax_theory: &Theory,
+) -> io::Result<Vec<u8>> {
+    let labels: Vec<String> = node_types
+        .iter()
+        .map(|ty| pretty_type(ty, syntax_theory))
+        .collect::<Result<_, _>>()?;
+    render_labelled_svg(term, labels)
+}
+
+fn render_partial_check_result_svg(
+    term: &OpenHypergraph<(), Operation>,
+    node_types: &[Option<metacat::tree::Tree<(), Operation>>],
+    syntax_theory: &Theory,
+) -> io::Result<Vec<u8>> {
+    let labels: Vec<String> = node_types
+        .iter()
+        .map(|ty| match ty {
+            Some(ty) => pretty_type(ty, syntax_theory),
+            None => Ok("?".to_string()),
+        })
+        .collect::<Result<_, _>>()?;
+    render_labelled_svg(term, labels)
+}
+
+fn render_labelled_svg(
+    term: &OpenHypergraph<(), Operation>,
+    labels: Vec<String>,
+) -> io::Result<Vec<u8>> {
+    let mut term = term.clone();
+    term.quotient().map_err(|error| {
+        invalid_data(format!(
+            "failed to quotient term for svg rendering: {error:?}"
+        ))
+    })?;
+
+    let labelled = term
+        .with_nodes(|_| labels)
+        .ok_or_else(|| invalid_data("labels length mismatch".to_string()))?;
+    to_svg_with(&labelled, &Options::default().display().lr())
 }
 
 fn render_untyped_svg(term: &OpenHypergraph<(), Operation>) -> io::Result<Vec<u8>> {
@@ -169,6 +213,17 @@ fn render_typed_svg(
         .with_nodes(|_| labels)
         .ok_or_else(|| invalid_data("labels length mismatch".to_string()))?;
     to_svg_with(&labelled, &Options::default().display().lr())
+}
+
+fn pretty_type(
+    ty: &metacat::tree::Tree<(), Operation>,
+    syntax_theory: &Theory,
+) -> io::Result<String> {
+    ty.try_pretty(Some(&|op: &Operation| {
+        syntax_theory.coarity_of(op).ok_or_else(|| {
+            invalid_data(format!("coarity lookup failed for operation `{op}`"))
+        })
+    }))
 }
 
 fn qualified_definition_dir(theory_id: &TheoryId, definition_name: &Operation) -> String {

@@ -76,14 +76,15 @@ fn source_type_map(
     theory_name: &Operation,
     raw: &RawTheoryArrow,
 ) -> Result<Hexpr, ElaborateError> {
-    let interpreted_source = try_interpret(&syntax.local_signature(), &raw.type_maps.0).map_err(
-        |error| ElaborateError::NameSourceTypeMapInterpretation {
-            theory: theory_name.to_string(),
-            arrow: raw.name.to_string(),
-            map: raw.type_maps.0.clone(),
-            error,
-        },
-    )?;
+    let interpreted_source =
+        try_interpret(&syntax.local_signature(), &raw.type_maps.0).map_err(|error| {
+            ElaborateError::NameSourceTypeMapInterpretation {
+                theory: theory_name.to_string(),
+                arrow: raw.name.to_string(),
+                map: raw.type_maps.0.clone(),
+                error,
+            }
+        })?;
     let metavars = vars("x", interpreted_source.sources.len())?;
 
     Ok(Hexpr::Frobenius {
@@ -97,22 +98,24 @@ fn target_type_map(
     theory_name: &Operation,
     raw: &RawTheoryArrow,
 ) -> Result<Hexpr, ElaborateError> {
-    let interpreted_source = try_interpret(&syntax.local_signature(), &raw.type_maps.0).map_err(
-        |error| ElaborateError::NameSourceTypeMapInterpretation {
-            theory: theory_name.to_string(),
-            arrow: raw.name.to_string(),
-            map: raw.type_maps.0.clone(),
-            error,
-        },
-    )?;
-    let interpreted_target = try_interpret(&syntax.local_signature(), &raw.type_maps.1).map_err(
-        |error| ElaborateError::NameTargetTypeMapInterpretation {
-            theory: theory_name.to_string(),
-            arrow: raw.name.to_string(),
-            map: raw.type_maps.1.clone(),
-            error,
-        },
-    )?;
+    let interpreted_source =
+        try_interpret(&syntax.local_signature(), &raw.type_maps.0).map_err(|error| {
+            ElaborateError::NameSourceTypeMapInterpretation {
+                theory: theory_name.to_string(),
+                arrow: raw.name.to_string(),
+                map: raw.type_maps.0.clone(),
+                error,
+            }
+        })?;
+    let interpreted_target =
+        try_interpret(&syntax.local_signature(), &raw.type_maps.1).map_err(|error| {
+            ElaborateError::NameTargetTypeMapInterpretation {
+                theory: theory_name.to_string(),
+                arrow: raw.name.to_string(),
+                map: raw.type_maps.1.clone(),
+                error,
+            }
+        })?;
 
     let metavars = vars("x", interpreted_source.sources.len())?;
     let mut copied_metavars = metavars.clone();
@@ -154,7 +157,9 @@ fn pack_object(object_size: usize) -> Result<Hexpr, ElaborateError> {
 }
 
 fn vars(prefix: &str, arity: usize) -> Result<Vec<Variable>, ElaborateError> {
-    (0..arity).map(|i| parse_variable(&format!("{prefix}{i}"))).collect()
+    (0..arity)
+        .map(|i| parse_variable(&format!("{prefix}{i}")))
+        .collect()
 }
 
 fn parse_variable(name: &str) -> Result<Variable, ElaborateError> {

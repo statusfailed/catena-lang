@@ -70,6 +70,8 @@ fn compile_into(report: &mut CompileReport) -> Result<(), CompileError> {
     let theory_set = TheorySet::from_raw(elaborated)?;
     report.theory_set = Some(theory_set.clone());
 
+    // check is a special case pass; we catch the 'partial' check error and add a partial-check
+    // diagram to output
     let definition_types = match crate::check::check(&theory_set) {
         Ok(definition_types) => definition_types,
         Err(error) => {
@@ -79,11 +81,14 @@ fn compile_into(report: &mut CompileReport) -> Result<(), CompileError> {
     };
     report.definition_types = Some(definition_types.clone());
 
+    // don't allow `=>` types on global interfaces
     reject_closure_global_interfaces(&theory_set)?;
 
+    // Compute out closures by bending wires
     let forgotten_closures = crate::pass::forget_closures::run(&theory_set, &definition_types)?;
     report.forgotten_closures = Some(forgotten_closures.clone());
 
+    // Compute StructuredPrograms
     let structured_programs = crate::codegen::codegen(&forgotten_closures)?;
     report.structured_programs = Some(structured_programs);
 

@@ -32,6 +32,17 @@
   run
 ))
 
+(def program materialize-bool : {
+    ({gpu.state 1} * [args_tail.])
+    ({gpu.env [.args_tail]} * [args.])
+    ({gpu.state bool} * [coargs.])
+    gpu.launch_params
+    ([.args coargs] -> val)
+  }
+  ->
+  (bool gpu.buf) =
+  gpu.materialize)
+
 
 # Partial application of 'and' to its first arg.
 # NOTE: this is currently rejected because of => types on interfaces.

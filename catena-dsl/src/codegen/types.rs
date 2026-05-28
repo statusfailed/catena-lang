@@ -45,13 +45,61 @@ pub fn gpu_local_decl(obj: &Tree<(), Operation>, name: &str) -> Option<String> {
     declaration(obj, name)
 }
 
+pub fn gpu_value_type(obj: &Tree<(), Operation>) -> Option<String> {
+    match obj {
+        Tree::Node(op, 0, children) if op.as_str() == "bool" && children.is_empty() => {
+            Some("uint8_t".to_string())
+        }
+        Tree::Node(op, 0, children) if op.as_str() == "u64" && children.is_empty() => {
+            Some("uint64_t".to_string())
+        }
+        Tree::Node(op, 0, children) if op.as_str() == "gpu.3d" && children.is_empty() => {
+            Some("catena_dim3_t".to_string())
+        }
+        Tree::Node(op, 0, children)
+            if op.as_str() == "gpu.launch_params" && children.is_empty() =>
+        {
+            Some("catena_launch_params_t".to_string())
+        }
+        Tree::Node(op, 0, children) if op.as_str() == "gpu.env" && children.is_empty() => {
+            Some("catena_gpu_env_t".to_string())
+        }
+        Tree::Node(op, 0, children) if op.as_str() == "gpu.state" && children.is_empty() => {
+            Some("catena_gpu_state_t".to_string())
+        }
+        Tree::Node(op, 0, children) if op.as_str() == "gpu.buf" => {
+            let [_element] = children.as_slice() else {
+                return None;
+            };
+            Some("catena_gpu_buf_t".to_string())
+        }
+        _ => None,
+    }
+}
+
+pub fn gpu_buffer_element_type(obj: &Tree<(), Operation>) -> Option<String> {
+    let Tree::Node(op, 0, children) = obj else {
+        return None;
+    };
+    if op.as_str() != "gpu.buf" {
+        return None;
+    }
+    let [element] = children.as_slice() else {
+        return None;
+    };
+    runtime_inner(element)
+        .and_then(gpu_value_type)
+        .or_else(|| gpu_value_type(element))
+}
+
 fn scalar_type(obj: &Tree<(), Operation>) -> Option<String> {
+    if let Some(control) = gpu_value_type(obj) {
+        return Some(control);
+    }
+
     match runtime_inner(obj)? {
         Tree::Node(op, 0, children) if op.as_str() == "1" && children.is_empty() => {
             Some("catena_unit_t".to_string())
-        }
-        Tree::Node(op, 0, children) if op.as_str() == "bool" && children.is_empty() => {
-            Some("uint8_t".to_string())
         }
         Tree::Node(op, 0, children) if op.as_str() == "->" => {
             let [source, target] = children.as_slice() else {
@@ -63,11 +111,15 @@ fn scalar_type(obj: &Tree<(), Operation>) -> Option<String> {
                 mangle_object(target)
             ))
         }
-        _ => None,
+        inner => gpu_value_type(inner),
     }
 }
 
 fn declaration(obj: &Tree<(), Operation>, name: &str) -> Option<String> {
+    if let Some(control) = gpu_value_type(obj) {
+        return Some(format!("{control} {name}"));
+    }
+
     match runtime_inner(obj)? {
         Tree::Node(op, 0, children) if op.as_str() == "1" && children.is_empty() => {
             Some(format!("catena_unit_t {name}"))
@@ -113,7 +165,7 @@ fn runtime_components<'a>(obj: &'a Tree<(), Operation>) -> Vec<&'a Tree<(), Oper
         Tree::Node(op, 0, children) if op.as_str() == "*" => {
             children.iter().flat_map(runtime_components).collect()
         }
-        other if runtime_inner(other).is_some() => vec![other],
+        other if runtime_inner(other).is_some() || gpu_value_type(other).is_some() => vec![other],
         _ => Vec::new(),
     }
 }

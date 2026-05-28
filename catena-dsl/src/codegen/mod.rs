@@ -1,19 +1,19 @@
-//! CUDA codegen via [`catena::StructuredProgram`]
+//! GPU codegen via [`catena::StructuredProgram`]
 //!
 //! For each annotated, transformed definition, we should have a number of definitions which
 //! only contain the syntax defined in stdlib/base.
 //!
-//! We can now *compile* these into CUDA code via the [`catena::StructuredProgram`] interface.
+//! We can now *compile* these into GPU code via the [`catena::StructuredProgram`] interface.
 //! Here's the spec:
 //!
-//! - Topologically sort all operations using metacat's SSA module (as in catena backend c codegen)
+//! - Topologically sort all operations using metacat's SSA module (as in catena backend codegen)
 //! - For node i, use variable name "x{i}"
 //! - All functions synthesized return 'void'; for inputs A, B and outputs C D, pass outputs as
 //!   ptrs to be overwritten - see catena codegen module for example.
-//! - Keep the mapping of catena-dsl types to CUDA types as its own file: for now, just pick one
+//! - Keep the mapping of catena-dsl types to GPU types as its own file: for now, just pick one
 //!   for bool, and synth a function type for (A -> B) fns.
 
-pub mod c;
+pub mod gpu;
 mod types;
 
 use std::collections::BTreeMap;
@@ -51,7 +51,9 @@ pub enum CodegenError {
     Ssa(#[from] SSAError),
     #[error("failed to quotient transformed term before codegen: {0:?}")]
     Quotient(open_hypergraphs::strict::vec::FiniteFunction),
-    #[error("codegen for `{definition}` failed: type `{ty}` is unsupported in C codegen (node {node})")]
+    #[error(
+        "codegen for `{definition}` failed: type `{ty}` is unsupported in GPU codegen (node {node})"
+    )]
     UnsupportedType {
         definition: String,
         node: usize,
@@ -72,13 +74,13 @@ fn codegen_definition(
     for source in &term.sources {
         let node = source.0;
         params.push(Param {
-            ty: types::structured_param_type(&term.hypergraph.nodes[node], false).ok_or_else(|| {
-                CodegenError::UnsupportedType {
+            ty: types::structured_param_type(&term.hypergraph.nodes[node], false).ok_or_else(
+                || CodegenError::UnsupportedType {
                     definition: qualified_name.to_string(),
                     node,
                     ty: format!("{:?}", term.hypergraph.nodes[node]),
-                }
-            })?,
+                },
+            )?,
             name: node_var(*source),
         });
     }
@@ -86,13 +88,13 @@ fn codegen_definition(
     for target in &term.targets {
         let node = target.0;
         params.push(Param {
-            ty: types::structured_param_type(&term.hypergraph.nodes[node], true).ok_or_else(|| {
-                CodegenError::UnsupportedType {
+            ty: types::structured_param_type(&term.hypergraph.nodes[node], true).ok_or_else(
+                || CodegenError::UnsupportedType {
                     definition: qualified_name.to_string(),
                     node,
                     ty: format!("{:?}", term.hypergraph.nodes[node]),
-                }
-            })?,
+                },
+            )?,
             name: output_param(*target),
         });
     }

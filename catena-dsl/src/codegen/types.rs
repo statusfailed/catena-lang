@@ -19,14 +19,14 @@ pub fn structured_param_type(obj: &Tree<(), Operation>, by_pointer: bool) -> Opt
     }
 }
 
-/// Render a Catena object type as a full C parameter declaration.
+/// Render a Catena object type as a full GPU parameter declaration.
 ///
 /// Example:
 /// `bool` with name `x0` becomes `uint8_t x0`
 ///
 /// Example:
 /// output `bool` with name `out_x1` becomes `uint8_t *out_x1`
-pub fn c_param_decl(obj: &Tree<(), Operation>, name: &str, by_pointer: bool) -> Option<String> {
+pub fn gpu_param_decl(obj: &Tree<(), Operation>, name: &str, by_pointer: bool) -> Option<String> {
     if by_pointer {
         scalar_type(obj).map(|ty| format!("{ty} *{name}"))
     } else {
@@ -34,14 +34,14 @@ pub fn c_param_decl(obj: &Tree<(), Operation>, name: &str, by_pointer: bool) -> 
     }
 }
 
-/// Render a Catena object type as a full C local declaration.
+/// Render a Catena object type as a full GPU local declaration.
 ///
 /// Example:
 /// `bool` with name `x3` becomes `uint8_t x3`
 ///
 /// Example:
 /// `(bool -> bool)` with name `f` becomes `void (*f)(uint8_t arg0, uint8_t *out0)`
-pub fn c_local_decl(obj: &Tree<(), Operation>, name: &str) -> Option<String> {
+pub fn gpu_local_decl(obj: &Tree<(), Operation>, name: &str) -> Option<String> {
     declaration(obj, name)
 }
 
@@ -79,14 +79,14 @@ fn declaration(obj: &Tree<(), Operation>, name: &str) -> Option<String> {
             let [source, target] = children.as_slice() else {
                 return None;
             };
-            let params = c_fn_param_list(source, target)?;
+            let params = gpu_fn_param_list(source, target)?;
             Some(format!("void (*{name})({params})"))
         }
         _ => None,
     }
 }
 
-fn c_fn_param_list(source: &Tree<(), Operation>, target: &Tree<(), Operation>) -> Option<String> {
+fn gpu_fn_param_list(source: &Tree<(), Operation>, target: &Tree<(), Operation>) -> Option<String> {
     let mut parts = runtime_components(source)
         .into_iter()
         .enumerate()
@@ -97,7 +97,7 @@ fn c_fn_param_list(source: &Tree<(), Operation>, target: &Tree<(), Operation>) -
     let mut outputs = runtime_components(target)
         .into_iter()
         .enumerate()
-        .map(|(index, arg)| c_param_decl(arg, &format!("out{}", source_len + index), true))
+        .map(|(index, arg)| gpu_param_decl(arg, &format!("out{}", source_len + index), true))
         .collect::<Option<Vec<_>>>()?;
     parts.append(&mut outputs);
 
@@ -180,7 +180,10 @@ mod tests {
         Tree::Node("val".parse().unwrap(), 0, vec![inner])
     }
 
-    fn fn_ptr_type(source: Tree<(), Operation>, target: Tree<(), Operation>) -> Tree<(), Operation> {
+    fn fn_ptr_type(
+        source: Tree<(), Operation>,
+        target: Tree<(), Operation>,
+    ) -> Tree<(), Operation> {
         Tree::Node("->".parse().unwrap(), 0, vec![source, target])
     }
 
@@ -198,40 +201,40 @@ mod tests {
     }
 
     #[test]
-    fn unit_type_renders_as_concrete_c_type() {
+    fn unit_type_renders_as_concrete_gpu_type() {
         let ty = val_type(unit_type());
         assert_eq!(
             structured_param_type(&ty, false).as_deref(),
             Some("catena_unit_t")
         );
         assert_eq!(
-            c_param_decl(&ty, "u", false).as_deref(),
+            gpu_param_decl(&ty, "u", false).as_deref(),
             Some("catena_unit_t u")
         );
         assert_eq!(
-            c_local_decl(&ty, "tmp").as_deref(),
+            gpu_local_decl(&ty, "tmp").as_deref(),
             Some("catena_unit_t tmp")
         );
     }
 
     #[test]
-    fn c_declarations_render_function_pointer_types() {
+    fn gpu_declarations_render_function_pointer_types() {
         let ty = val_type(fn_ptr_type(val_type(bool_type()), val_type(bool_type())));
         assert_eq!(
-            c_param_decl(&ty, "f", false).as_deref(),
+            gpu_param_decl(&ty, "f", false).as_deref(),
             Some("void (*f)(uint8_t arg0, uint8_t *out1)")
         );
         assert_eq!(
-            c_local_decl(&ty, "tmp").as_deref(),
+            gpu_local_decl(&ty, "tmp").as_deref(),
             Some("void (*tmp)(uint8_t arg0, uint8_t *out1)")
         );
     }
 
     #[test]
-    fn c_declarations_skip_non_runtime_function_inputs() {
+    fn gpu_declarations_skip_non_runtime_function_inputs() {
         let ty = val_type(fn_ptr_type(Tree::Leaf(0, ()), val_type(bool_type())));
         assert_eq!(
-            c_param_decl(&ty, "f", false).as_deref(),
+            gpu_param_decl(&ty, "f", false).as_deref(),
             Some("void (*f)(uint8_t *out0)")
         );
     }

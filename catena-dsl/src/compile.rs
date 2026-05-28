@@ -4,8 +4,11 @@ use open_hypergraphs::lax::OpenHypergraph;
 use thiserror::Error;
 
 use crate::{
-    check::{CheckError, partial_definition_types}, codegen::CodegenError, elaborate::ElaborateError,
-    pass::forget_closures::ForgetClosuresError, report::CompileReport,
+    check::{CheckError, partial_definition_types},
+    codegen::CodegenError,
+    elaborate::ElaborateError,
+    pass::forget_closures::ForgetClosuresError,
+    report::CompileReport,
 };
 
 #[derive(Debug, Error)]
@@ -39,7 +42,7 @@ pub enum CompileError {
 // - Elaborates input to include function names (finitary CMC)
 // - Typechecks
 // - Generates a `StructuredProgram` for each definition
-// - Renders as a single CUDA file
+// - Renders GPU source artifacts
 // - Produces a CompileReport which contains all intermediate data, including graphs rendered with
 //   open-hypergraphs-dot for each definition + the result of each pass.
 //

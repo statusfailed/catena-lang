@@ -8,16 +8,19 @@ use thiserror::Error;
 use crate::{codegen::types, report::AnnotatedTerm};
 
 #[derive(Debug, Error)]
-pub enum CRenderError {
+pub enum GpuRenderError {
     #[error("missing node type for `{0}`")]
     MissingNodeType(String),
-    #[error("type `{0:?}` is unsupported in C")]
+    #[error("type `{0:?}` is unsupported in GPU codegen")]
     UnsupportedType(metacat::tree::Tree<(), Operation>),
-    #[error("unsupported structured statement in C renderer")]
+    #[error("unsupported structured statement in GPU renderer")]
     UnsupportedStmt,
 }
 
-pub fn render_program(program: &StructuredProgram, term: &AnnotatedTerm) -> Result<String, CRenderError> {
+pub fn render_program(
+    program: &StructuredProgram,
+    term: &AnnotatedTerm,
+) -> Result<String, GpuRenderError> {
     let mut term = term.clone();
     term.quotient().ok();
     let node_types = node_type_map(&term);
@@ -39,10 +42,14 @@ pub fn render_program(program: &StructuredProgram, term: &AnnotatedTerm) -> Resu
             .enumerate()
             .map(|(index, param)| {
                 if index < term.sources.len() {
-                    types::c_param_decl(&term.hypergraph.nodes[term.sources[index].0], &param.name, false)
+                    types::gpu_param_decl(
+                        &term.hypergraph.nodes[term.sources[index].0],
+                        &param.name,
+                        false,
+                    )
                 } else {
                     let target_index = index - term.sources.len();
-                    types::c_param_decl(
+                    types::gpu_param_decl(
                         &term.hypergraph.nodes[term.targets[target_index].0],
                         &param.name,
                         true,
@@ -55,7 +62,7 @@ pub fn render_program(program: &StructuredProgram, term: &AnnotatedTerm) -> Resu
                         let target_index = index - term.sources.len();
                         &term.hypergraph.nodes[term.targets[target_index].0]
                     };
-                    CRenderError::UnsupportedType(ty.clone())
+                    GpuRenderError::UnsupportedType(ty.clone())
                 })
             })
             .collect::<Result<Vec<_>, _>>()?
@@ -108,7 +115,7 @@ fn render_stmt(
     stmt: &Stmt,
     node_types: &BTreeMap<String, metacat::tree::Tree<(), Operation>>,
     declared: &mut HashSet<String>,
-) -> Result<(), CRenderError> {
+) -> Result<(), GpuRenderError> {
     match stmt {
         Stmt::Primitive(primitive) => render_primitive(out, primitive, node_types, declared),
         Stmt::Assign { lhs, rhs } => {
@@ -119,7 +126,7 @@ fn render_stmt(
             out.push_str("    return;\n");
             Ok(())
         }
-        _ => Err(CRenderError::UnsupportedStmt),
+        _ => Err(GpuRenderError::UnsupportedStmt),
     }
 }
 
@@ -128,47 +135,66 @@ fn render_primitive(
     primitive: &Primitive,
     node_types: &BTreeMap<String, metacat::tree::Tree<(), Operation>>,
     declared: &mut HashSet<String>,
-) -> Result<(), CRenderError> {
+) -> Result<(), GpuRenderError> {
     for output in &primitive.outputs {
         if declared.insert(output.clone()) {
             let ty = node_types
                 .get(output)
-                .ok_or_else(|| CRenderError::MissingNodeType(output.clone()))?;
-            let decl = types::c_local_decl(ty, output)
-                .ok_or_else(|| CRenderError::UnsupportedType(ty.clone()))?;
+                .ok_or_else(|| GpuRenderError::MissingNodeType(output.clone()))?;
+            let decl = types::gpu_local_decl(ty, output)
+                .ok_or_else(|| GpuRenderError::UnsupportedType(ty.clone()))?;
             out.push_str(&format!("    {};\n", decl));
         }
     }
 
     match primitive.name.as_str() {
         "bool.t" => {
-            let [output] = primitive.outputs.as_slice() else { return Err(CRenderError::UnsupportedStmt) };
+            let [output] = primitive.outputs.as_slice() else {
+                return Err(GpuRenderError::UnsupportedStmt);
+            };
             out.push_str(&format!("    {output} = 1;\n"));
         }
         "bool.f" => {
-            let [output] = primitive.outputs.as_slice() else { return Err(CRenderError::UnsupportedStmt) };
+            let [output] = primitive.outputs.as_slice() else {
+                return Err(GpuRenderError::UnsupportedStmt);
+            };
             out.push_str(&format!("    {output} = 0;\n"));
         }
         "bool.not" => {
-            let [input] = primitive.inputs.as_slice() else { return Err(CRenderError::UnsupportedStmt) };
-            let [output] = primitive.outputs.as_slice() else { return Err(CRenderError::UnsupportedStmt) };
+            let [input] = primitive.inputs.as_slice() else {
+                return Err(GpuRenderError::UnsupportedStmt);
+            };
+            let [output] = primitive.outputs.as_slice() else {
+                return Err(GpuRenderError::UnsupportedStmt);
+            };
             out.push_str(&format!("    {output} = !{input};\n"));
         }
         "bool.and" => {
-            let [lhs, rhs] = primitive.inputs.as_slice() else { return Err(CRenderError::UnsupportedStmt) };
-            let [output] = primitive.outputs.as_slice() else { return Err(CRenderError::UnsupportedStmt) };
+            let [lhs, rhs] = primitive.inputs.as_slice() else {
+                return Err(GpuRenderError::UnsupportedStmt);
+            };
+            let [output] = primitive.outputs.as_slice() else {
+                return Err(GpuRenderError::UnsupportedStmt);
+            };
             out.push_str(&format!("    {output} = {lhs} && {rhs};\n"));
         }
         "bool.or" => {
-            let [lhs, rhs] = primitive.inputs.as_slice() else { return Err(CRenderError::UnsupportedStmt) };
-            let [output] = primitive.outputs.as_slice() else { return Err(CRenderError::UnsupportedStmt) };
+            let [lhs, rhs] = primitive.inputs.as_slice() else {
+                return Err(GpuRenderError::UnsupportedStmt);
+            };
+            let [output] = primitive.outputs.as_slice() else {
+                return Err(GpuRenderError::UnsupportedStmt);
+            };
             out.push_str(&format!("    {output} = {lhs} || {rhs};\n"));
         }
         "bool.ifc" => {
-            let [env_true, fn_true, env_false, fn_false, flag, arg] = primitive.inputs.as_slice() else {
-                return Err(CRenderError::UnsupportedStmt);
+            let [env_true, fn_true, env_false, fn_false, flag, arg] = primitive.inputs.as_slice()
+            else {
+                return Err(GpuRenderError::UnsupportedStmt);
             };
-            let [output] = primitive.outputs.as_slice() else { return Err(CRenderError::UnsupportedStmt) };
+            let [output] = primitive.outputs.as_slice() else {
+                return Err(GpuRenderError::UnsupportedStmt);
+            };
             out.push_str(&format!(
                 "    if ({flag}) {{ {fn_true}({env_true}, {arg}, &{output}); }} else {{ {fn_false}({env_false}, {arg}, &{output}); }}\n"
             ));
@@ -178,7 +204,7 @@ fn render_primitive(
         }
         "eval" => {
             let Some((func, args)) = primitive.inputs.split_last() else {
-                return Err(CRenderError::UnsupportedStmt);
+                return Err(GpuRenderError::UnsupportedStmt);
             };
             let mut call_args = args.to_vec();
             let mut output_ptrs = primitive
@@ -190,7 +216,9 @@ fn render_primitive(
             out.push_str(&format!("    {func}({});\n", call_args.join(", ")));
         }
         _ if primitive.name.starts_with("name.") => {
-            let [output] = primitive.outputs.as_slice() else { return Err(CRenderError::UnsupportedStmt) };
+            let [output] = primitive.outputs.as_slice() else {
+                return Err(GpuRenderError::UnsupportedStmt);
+            };
             let target = sanitize_ident(primitive.name.trim_start_matches("name."));
             out.push_str(&format!("    {output} = {target};\n"));
         }

@@ -1,4 +1,4 @@
-mod c;
+mod gpu;
 mod svg;
 
 use std::{fs, io, path::Path};
@@ -58,7 +58,7 @@ impl CompileReport {
             fs::write(dir.join("elaborated.hex"), elaborated.to_hexpr_text())?;
         }
         svg::dump_svgs(self, &dir.join("svgs"))?;
-        c::dump_c(self, &dir.join("c"))?;
+        gpu::dump_gpu(self, &dir.join("gpu"))?;
         Ok(())
     }
 }

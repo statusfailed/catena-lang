@@ -1,8 +1,8 @@
 use std::{fs, io, path::Path};
 
-use crate::{codegen::c::render_program, report::CompileReport};
+use crate::{codegen::gpu::render_program, report::CompileReport};
 
-pub fn dump_c(report: &CompileReport, dir: &Path) -> io::Result<()> {
+pub fn dump_gpu(report: &CompileReport, dir: &Path) -> io::Result<()> {
     let (Some(structured_programs), Some(forgotten_closures)) =
         (&report.structured_programs, &report.forgotten_closures)
     else {
@@ -19,19 +19,19 @@ pub fn dump_c(report: &CompileReport, dir: &Path) -> io::Result<()> {
                 .ok_or_else(|| {
                     io::Error::new(
                         io::ErrorKind::InvalidData,
-                        format!(
-                            "missing transformed term for `{theory_id}.{definition_name}`"
-                        ),
+                        format!("missing transformed term for `{theory_id}.{definition_name}`"),
                     )
                 })?;
             let rendered = render_program(program, term).map_err(|error| {
                 io::Error::new(
                     io::ErrorKind::InvalidData,
-                    format!("failed to render C for `{theory_id}.{definition_name}`: {error}"),
+                    format!(
+                        "failed to render GPU code for `{theory_id}.{definition_name}`: {error}"
+                    ),
                 )
             })?;
             fs::write(
-                dir.join(format!("{theory_id}.{definition_name}.c")),
+                dir.join(format!("{theory_id}.{definition_name}.cpp")),
                 rendered,
             )?;
         }

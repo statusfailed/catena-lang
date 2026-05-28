@@ -19,9 +19,7 @@ mod types;
 use std::collections::BTreeMap;
 
 use catena::structured::{EntryPoint, Param, Primitive, Stmt, StructuredProgram};
-use hexpr::Operation;
 use metacat::ssa::{SSAError, ssa};
-use metacat::tree::Tree;
 use open_hypergraphs::lax::NodeId;
 use thiserror::Error;
 
@@ -53,22 +51,6 @@ pub enum CodegenError {
     Ssa(#[from] SSAError),
     #[error("failed to quotient transformed term before codegen: {0:?}")]
     Quotient(open_hypergraphs::strict::vec::FiniteFunction),
-    #[error(
-        "codegen for `{definition}` failed: every runtime wire type must be wrapped in `val`, got `{ty}` (node {node})"
-    )]
-    MissingValueWrapper {
-        definition: String,
-        node: usize,
-        ty: String,
-    },
-    #[error(
-        "codegen for `{definition}` failed: nested `val` wrappers are not allowed, got `{ty}` (node {node})"
-    )]
-    NestedValueWrapper {
-        definition: String,
-        node: usize,
-        ty: String,
-    },
     #[error("codegen for `{definition}` failed: type `{ty}` is unsupported in C codegen (node {node})")]
     UnsupportedType {
         definition: String,
@@ -81,7 +63,7 @@ fn codegen_definition(
     qualified_name: &str,
     term: &AnnotatedTerm,
 ) -> Result<StructuredProgram, CodegenError> {
-    let mut term = strip_runtime_wrappers(term, qualified_name)?;
+    let mut term = term.clone();
     term.quotient().map_err(CodegenError::Quotient)?;
 
     let mut params = Vec::new();
@@ -148,61 +130,6 @@ fn codegen_definition(
         },
         body,
     })
-}
-
-pub(crate) fn strip_runtime_wrappers(
-    term: &AnnotatedTerm,
-    qualified_name: &str,
-) -> Result<AnnotatedTerm, CodegenError> {
-    let mut stripped = term.clone();
-    for (node, ty) in stripped.hypergraph.nodes.iter_mut().enumerate() {
-        *ty = strip_runtime_wrapper(ty, qualified_name, node)?;
-    }
-    Ok(stripped)
-}
-
-fn strip_runtime_wrapper(
-    ty: &Tree<(), Operation>,
-    qualified_name: &str,
-    node: usize,
-) -> Result<Tree<(), Operation>, CodegenError> {
-    match ty {
-        Tree::Node(op, 0, children) if is_runtime_wrapper(op) => {
-            let [inner] = children.as_slice() else {
-                return Err(CodegenError::MissingValueWrapper {
-                    definition: qualified_name.to_string(),
-                    node,
-                    ty: format!("{ty:?}"),
-                });
-            };
-            if contains_runtime_wrapper(inner) {
-                return Err(CodegenError::NestedValueWrapper {
-                    definition: qualified_name.to_string(),
-                    node,
-                    ty: format!("{ty:?}"),
-                });
-            }
-            Ok(inner.clone())
-        }
-        _ => Err(CodegenError::MissingValueWrapper {
-            definition: qualified_name.to_string(),
-            node,
-            ty: format!("{ty:?}"),
-        }),
-    }
-}
-
-fn contains_runtime_wrapper(ty: &Tree<(), Operation>) -> bool {
-    match ty {
-        Tree::Node(op, _, children) => {
-            is_runtime_wrapper(op) || children.iter().any(contains_runtime_wrapper)
-        }
-        _ => false,
-    }
-}
-
-fn is_runtime_wrapper(op: &Operation) -> bool {
-    matches!(op.as_str(), "val" | "value")
 }
 
 fn node_var(node: NodeId) -> String {

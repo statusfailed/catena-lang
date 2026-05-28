@@ -32,13 +32,13 @@
   #
   # (shorthand above assumes everything wrapped in `Value`)
   (arr bool.ifc : {[x y a b.]
-    ([.x] val)
+    ([.x])
     ([.x a] {* [.b]} -> val)
-    ([.y] val)
+    ([.y])
     ([.y a] {* [.b]} -> val)
     (bool val)
-    ([.a] val)
-  } -> ([x y a b . b] val))
+    ([.a])
+  } -> ([x y a b . b]))
 
 
   # temp helpers until we add polymorphic versions

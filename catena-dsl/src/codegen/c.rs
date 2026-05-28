@@ -5,12 +5,10 @@ use hexpr::Operation;
 use open_hypergraphs::lax::NodeId;
 use thiserror::Error;
 
-use crate::{codegen::{strip_runtime_wrappers, types}, report::AnnotatedTerm};
+use crate::{codegen::types, report::AnnotatedTerm};
 
 #[derive(Debug, Error)]
 pub enum CRenderError {
-    #[error(transparent)]
-    Codegen(#[from] super::CodegenError),
     #[error("missing node type for `{0}`")]
     MissingNodeType(String),
     #[error("type `{0:?}` is unsupported in C")]
@@ -20,7 +18,7 @@ pub enum CRenderError {
 }
 
 pub fn render_program(program: &StructuredProgram, term: &AnnotatedTerm) -> Result<String, CRenderError> {
-    let mut term = strip_runtime_wrappers(term, &program.entry.name)?;
+    let mut term = term.clone();
     term.quotient().ok();
     let node_types = node_type_map(&term);
     let source_nodes: HashSet<_> = term.sources.iter().map(|n| n.0).collect();

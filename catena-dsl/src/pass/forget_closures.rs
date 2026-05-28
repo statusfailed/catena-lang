@@ -21,6 +21,7 @@ const CLOSURE_TYPE: &str = "=>";
 const FUNCTION_TYPE: &str = "->";
 const PRODUCT_TYPE: &str = "*";
 const UNIT_TYPE: &str = "1";
+const VALUE_TYPE: &str = "val";
 const NAME_PREFIX: &str = "name.";
 const DEFER: &str = "defer";
 const RUN: &str = "run";
@@ -226,7 +227,8 @@ fn map_lift(source: &[Obj], target: &[Obj]) -> OpenHypergraph<Obj, Arr> {
     };
 
     let (fn_domain, fn_codomain) =
-        function_parts(function_type).expect("lift source should be function-typed");
+        value_wrapped_function_parts(function_type)
+            .expect("lift source should be value-wrapped function-typed");
     let (closure_domain, closure_codomain) =
         closure_parts(closure_type).expect("lift target should be closure-typed");
 
@@ -278,6 +280,24 @@ fn closure_parts(o: &Obj) -> Option<(&Obj, &Obj)> {
 
 fn function_parts(o: &Obj) -> Option<(&Obj, &Obj)> {
     parts(o, FUNCTION_TYPE)
+}
+
+fn value_wrapped_function_parts(o: &Obj) -> Option<(&Obj, &Obj)> {
+    let inner = unwrap_value(o)?;
+    function_parts(inner)
+}
+
+fn unwrap_value(o: &Obj) -> Option<&Obj> {
+    let Tree::Node(op, _, children) = o else {
+        return None;
+    };
+    if op.as_str() != VALUE_TYPE {
+        return None;
+    }
+    let [inner] = children.as_slice() else {
+        return None;
+    };
+    Some(inner)
 }
 
 fn parts<'a>(o: &'a Obj, op_name: &str) -> Option<(&'a Obj, &'a Obj)> {

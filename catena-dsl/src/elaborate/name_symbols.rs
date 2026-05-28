@@ -12,6 +12,7 @@ use crate::elaborate::ElaborateError;
 const FN_TYPE: &str = "->";
 const PRODUCT_TYPE: &str = "*";
 const UNIT_TYPE: &str = "1";
+const VALUE_TYPE: &str = "val";
 const NAME_PREFIX: &str = "name.";
 
 pub fn elaborate_theory(
@@ -138,6 +139,7 @@ fn target_type_map(
         copy,
         Hexpr::Tensor(vec![pack_s, pack_t]),
         parse_operation_hexpr(FN_TYPE)?,
+        parse_operation_hexpr(VALUE_TYPE)?,
     ]))
 }
 

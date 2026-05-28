@@ -1,6 +1,8 @@
 use hexpr::Operation;
 use metacat::tree::Tree;
 
+const VALUE_TYPES: &[&str] = &["val", "value"];
+
 /// Map a Catena object type to the type string stored on a `StructuredProgram` parameter.
 ///
 /// Example:
@@ -44,7 +46,7 @@ pub fn c_local_decl(obj: &Tree<(), Operation>, name: &str) -> Option<String> {
 }
 
 fn scalar_type(obj: &Tree<(), Operation>) -> Option<String> {
-    match obj {
+    match runtime_inner(obj)? {
         Tree::Node(op, 0, children) if op.as_str() == "1" && children.is_empty() => {
             Some("catena_unit_t".to_string())
         }
@@ -66,7 +68,7 @@ fn scalar_type(obj: &Tree<(), Operation>) -> Option<String> {
 }
 
 fn declaration(obj: &Tree<(), Operation>, name: &str) -> Option<String> {
-    match obj {
+    match runtime_inner(obj)? {
         Tree::Node(op, 0, children) if op.as_str() == "1" && children.is_empty() => {
             Some(format!("catena_unit_t {name}"))
         }
@@ -85,14 +87,14 @@ fn declaration(obj: &Tree<(), Operation>, name: &str) -> Option<String> {
 }
 
 fn c_fn_param_list(source: &Tree<(), Operation>, target: &Tree<(), Operation>) -> Option<String> {
-    let mut parts = flatten_product(source)
+    let mut parts = runtime_components(source)
         .into_iter()
         .enumerate()
         .map(|(index, arg)| declaration(arg, &format!("arg{index}")))
         .collect::<Option<Vec<_>>>()?;
 
     let source_len = parts.len();
-    let mut outputs = flatten_product(target)
+    let mut outputs = runtime_components(target)
         .into_iter()
         .enumerate()
         .map(|(index, arg)| c_param_decl(arg, &format!("out{}", source_len + index), true))
@@ -106,13 +108,13 @@ fn c_fn_param_list(source: &Tree<(), Operation>, target: &Tree<(), Operation>) -
     }
 }
 
-fn flatten_product<'a>(obj: &'a Tree<(), Operation>) -> Vec<&'a Tree<(), Operation>> {
+fn runtime_components<'a>(obj: &'a Tree<(), Operation>) -> Vec<&'a Tree<(), Operation>> {
     match obj {
         Tree::Node(op, 0, children) if op.as_str() == "*" => {
-            children.iter().flat_map(flatten_product).collect()
+            children.iter().flat_map(runtime_components).collect()
         }
-        Tree::Node(op, 0, children) if op.as_str() == "1" && children.is_empty() => Vec::new(),
-        other => vec![other],
+        other if runtime_inner(other).is_some() => vec![other],
+        _ => Vec::new(),
     }
 }
 
@@ -133,6 +135,19 @@ fn mangle_object(obj: &Tree<(), Operation>) -> String {
             out
         }
     }
+}
+
+fn runtime_inner(obj: &Tree<(), Operation>) -> Option<&Tree<(), Operation>> {
+    let Tree::Node(op, 0, children) = obj else {
+        return None;
+    };
+    if !VALUE_TYPES.contains(&op.as_str()) {
+        return None;
+    }
+    let [inner] = children.as_slice() else {
+        return None;
+    };
+    Some(inner)
 }
 
 fn sanitize_ident(value: &str) -> String {
@@ -161,26 +176,30 @@ mod tests {
         Tree::Node("bool".parse().unwrap(), 0, vec![])
     }
 
+    fn val_type(inner: Tree<(), Operation>) -> Tree<(), Operation> {
+        Tree::Node("val".parse().unwrap(), 0, vec![inner])
+    }
+
     fn fn_ptr_type(source: Tree<(), Operation>, target: Tree<(), Operation>) -> Tree<(), Operation> {
         Tree::Node("->".parse().unwrap(), 0, vec![source, target])
     }
 
     #[test]
     fn structured_param_type_renders_function_pointer_name() {
-        let ty = fn_ptr_type(bool_type(), bool_type());
+        let ty = val_type(fn_ptr_type(val_type(bool_type()), val_type(bool_type())));
         assert_eq!(
             structured_param_type(&ty, false).as_deref(),
-            Some("fn_bool_to_bool")
+            Some("fn_val_bool_to_val_bool")
         );
         assert_eq!(
             structured_param_type(&ty, true).as_deref(),
-            Some("fn_bool_to_bool*")
+            Some("fn_val_bool_to_val_bool*")
         );
     }
 
     #[test]
     fn unit_type_renders_as_concrete_c_type() {
-        let ty = unit_type();
+        let ty = val_type(unit_type());
         assert_eq!(
             structured_param_type(&ty, false).as_deref(),
             Some("catena_unit_t")
@@ -197,7 +216,7 @@ mod tests {
 
     #[test]
     fn c_declarations_render_function_pointer_types() {
-        let ty = fn_ptr_type(bool_type(), bool_type());
+        let ty = val_type(fn_ptr_type(val_type(bool_type()), val_type(bool_type())));
         assert_eq!(
             c_param_decl(&ty, "f", false).as_deref(),
             Some("void (*f)(uint8_t arg0, uint8_t *out1)")
@@ -205,6 +224,15 @@ mod tests {
         assert_eq!(
             c_local_decl(&ty, "tmp").as_deref(),
             Some("void (*tmp)(uint8_t arg0, uint8_t *out1)")
+        );
+    }
+
+    #[test]
+    fn c_declarations_skip_non_runtime_function_inputs() {
+        let ty = val_type(fn_ptr_type(Tree::Leaf(0, ()), val_type(bool_type())));
+        assert_eq!(
+            c_param_decl(&ty, "f", false).as_deref(),
+            Some("void (*f)(uint8_t *out0)")
         );
     }
 }

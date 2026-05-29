@@ -4,6 +4,10 @@
 
 # Boolean examples
 (def program not : (bool val) -> (bool val) = bool.not)
+
+# Test we can use other definnitions
+(def program use-not : (bool val) -> (bool val) = not)
+
 #(def program run-not : (bool val) -> (bool val) = ({defer (name.bool.not lift)} compose run))
 (def program check-defer : (bool val) -> (bool val) = ({defer (name.bool.not lift)} compose run))
 
@@ -31,6 +35,11 @@
   compose
   run
 ))
+
+
+# Testing monomorphisation
+#(def program id : [a] -> [a] = [x])
+#(def program use-id : (bool val) -> (bool val) = id)
 
 # using 'bool' as a substitute for `Ix n` (bool => n = 2!) we check if we can define pointwise addition!
 # TODO

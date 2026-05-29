@@ -6,6 +6,7 @@ Catena DSL's codegen has a few overlapping concerns:
 - Monomorphisation: a function with type parameters may requiring multiple versions of the 'same' templated C function
 - Host/device distinction: some functions may be needed on host, device, or both!
 - Kernels: some operations (gpu materialize) cannot be run as a normal C function, but MUST be launched as a kernel.
+- Entrypoints: which catena functions can be *called*? Which ones are entrypoints?
 
 The following subsections describe each problem in more detail, and sketch
 a solution.
@@ -109,6 +110,46 @@ The actual definition must be a `__global__` (i.e., a kernel).
 
 The solution is we synthesize both the global definition -- prefixed with
 `__global__` -- as well as a 'wrapper function' that calls it.
+
+## Entrypoints
+
+Each definition may be...
+
+- Inlined
+- Generated as a C function
+    - Either as an entrypoint or not
+
+Suppose we have a couple definitions like this:
+
+```hex
+# Boolean examples
+(def program not : (bool val) -> (bool val) = bool.not)
+
+# Test we can use other definnitions
+(def program use-not : (bool val) -> (bool val) = not)
+```
+
+The latter two should compile. We expect `not` to compile to this:
+
+```c
+void not(bool x0, bool* r0) {
+    r0 = bool_not(x0) // calls builtin bool_not
+}
+```
+
+and `use-not` to this:
+
+```c
+void use_not(bool x0, bool* r0) {
+    r0 = not(x0) // calls our definition of `not`
+}
+```
+
+The codegen module does the following:
+
+- Accept a list of entrypoint names
+- Ensure each is monomorphic
+-
 
 # Deficiencies
 

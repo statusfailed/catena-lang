@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 
 use hexpr::Operation;
 use thiserror::Error;
@@ -59,21 +59,12 @@ pub fn render_module(module: &GpuModule) -> Result<String, GpuRenderError> {
 }
 
 fn render_function(out: &mut String, function: &GpuFunction) -> Result<(), GpuRenderError> {
-    // A materialize assignment can use a function pointer whose target element type is carried by
-    // the materialized buffer, not by the ordinary lowered function-pointer type.
-    let materialize_fn_outputs = materialize_fn_output_types(function)?;
     out.push_str(&format!("void {}(", function.name));
     let mut params = Vec::new();
 
     // Sources render as ordinary parameters; targets render as output-pointer parameters.
     for source in &function.sources {
-        if let Some(element) = materialize_fn_outputs.get(&source.node)
-            && matches!(runtime_type(source), Some(CType::FunctionPointer { .. }))
-        {
-            params.push(materialize_fn_ptr_decl(source, element)?);
-        } else {
-            params.push(param_decl(source, false)?);
-        }
+        params.push(param_decl(source, false)?);
     }
     for target in &function.targets {
         params.push(param_decl(target, true)?);
@@ -232,10 +223,6 @@ fn render_materialize_kernel(
         "__global__ void {kernel_name}({} *out, uint64_t len",
         c_type(element)
     ));
-    if let GpuValue::Var(var) = func {
-        out.push_str(", ");
-        out.push_str(&materialize_fn_ptr_decl(var, element)?);
-    }
     for arg in &args {
         if let GpuValue::Var(var) = arg {
             if runtime_type(var).is_some() {
@@ -279,7 +266,7 @@ fn render_materialize_call(out: &mut String, assignment: &GpuAssign) -> Result<(
             runtime_type(output).unwrap().clone(),
         ));
     };
-    let (launch, func, args) = materialize_parts(assignment)?;
+    let (launch, _func, args) = materialize_parts(assignment)?;
     let launch = value_expr(launch);
     let kernel_name = materialize_kernel_name(assignment)?;
 
@@ -304,10 +291,6 @@ fn render_materialize_call(out: &mut String, assignment: &GpuAssign) -> Result<(
         "        ({name}_data, {name}_len",
         name = output.name
     ));
-    if matches!(func, GpuValue::Var(_)) {
-        out.push_str(", ");
-        out.push_str(&value_expr(func));
-    }
     for arg in args {
         if let GpuValue::Var(var) = arg
             && runtime_type(var).is_some()
@@ -342,12 +325,6 @@ fn materialize_parts(
             matches!(
                 input,
                 GpuValue::FnSymbol(_)
-                    | GpuValue::Var(GpuVar {
-                        lowered: crate::codegen::lower_types::LoweredType::Runtime(
-                            CType::FunctionPointer { .. }
-                        ),
-                        ..
-                    })
             )
         })
         .ok_or(GpuRenderError::MissingMaterializeFunction)?;
@@ -359,32 +336,6 @@ fn materialize_parts(
     Ok((launch, func, args))
 }
 
-fn materialize_fn_output_types(
-    function: &GpuFunction,
-) -> Result<HashMap<open_hypergraphs::lax::NodeId, CType>, GpuRenderError> {
-    let mut outputs = HashMap::new();
-    for assignment in &function.assignments {
-        if assignment.op.as_str() != "gpu.materialize" {
-            continue;
-        }
-        let [output] = assignment.outputs.as_slice() else {
-            return Err(invalid_outputs(assignment, 1));
-        };
-        let CType::Pointer(element) =
-            runtime_type(output).ok_or_else(|| GpuRenderError::ErasedType(output.clone()))?
-        else {
-            return Err(GpuRenderError::UnsupportedType(
-                runtime_type(output).unwrap().clone(),
-            ));
-        };
-        let (_, func, _) = materialize_parts(assignment)?;
-        if let GpuValue::Var(var) = func {
-            outputs.insert(var.node, (**element).clone());
-        }
-    }
-    Ok(outputs)
-}
-
 fn materialize_kernel_name(assignment: &GpuAssign) -> Result<String, GpuRenderError> {
     let [output] = assignment.outputs.as_slice() else {
         return Err(invalid_outputs(assignment, 1));
@@ -394,9 +345,6 @@ fn materialize_kernel_name(assignment: &GpuAssign) -> Result<String, GpuRenderEr
 
 fn param_decl(var: &GpuVar, by_pointer: bool) -> Result<String, GpuRenderError> {
     let ty = runtime_type(var).ok_or_else(|| GpuRenderError::ErasedType(var.clone()))?;
-    if let CType::FunctionPointer { .. } = ty {
-        return Ok(fn_ptr_decl(ty, &var.name));
-    }
     if by_pointer {
         Ok(format!("{} *out_{}", c_type(ty), var.name))
     } else {
@@ -404,55 +352,9 @@ fn param_decl(var: &GpuVar, by_pointer: bool) -> Result<String, GpuRenderError> 
     }
 }
 
-fn materialize_fn_ptr_decl(var: &GpuVar, element: &CType) -> Result<String, GpuRenderError> {
-    let Some(CType::FunctionPointer { inputs, outputs }) = runtime_type(var) else {
-        return param_decl(var, false);
-    };
-    let mut outputs = outputs.clone();
-    if outputs.last() != Some(element) {
-        outputs.push(element.clone());
-    }
-    Ok(fn_ptr_decl(
-        &CType::FunctionPointer {
-            inputs: inputs.clone(),
-            outputs,
-        },
-        &var.name,
-    ))
-}
-
 fn local_decl(var: &GpuVar) -> Result<String, GpuRenderError> {
     let ty = runtime_type(var).ok_or_else(|| GpuRenderError::ErasedType(var.clone()))?;
-    if let CType::FunctionPointer { .. } = ty {
-        Ok(fn_ptr_decl(ty, &var.name))
-    } else {
-        Ok(format!("{} {}", c_type(ty), var.name))
-    }
-}
-
-fn fn_ptr_decl(ty: &CType, name: &str) -> String {
-    match ty {
-        CType::FunctionPointer { inputs, outputs } => {
-            let mut params = inputs
-                .iter()
-                .enumerate()
-                .map(|(index, ty)| format!("{} arg{index}", c_type(ty)))
-                .collect::<Vec<_>>();
-            let input_count = params.len();
-            params.extend(
-                outputs
-                    .iter()
-                    .enumerate()
-                    .map(|(index, ty)| format!("{} *out{}", c_type(ty), input_count + index)),
-            );
-            if params.is_empty() {
-                format!("void (*{name})(void)")
-            } else {
-                format!("void (*{name})({})", params.join(", "))
-            }
-        }
-        other => format!("{} {name}", c_type(other)),
-    }
+    Ok(format!("{} {}", c_type(ty), var.name))
 }
 
 fn c_type(ty: &CType) -> String {
@@ -462,7 +364,6 @@ fn c_type(ty: &CType) -> String {
         CType::U64 => "uint64_t".to_string(),
         CType::F32 => "float".to_string(),
         CType::Pointer(inner) => format!("{} *", c_type(inner)),
-        CType::FunctionPointer { .. } => "/* fn */".to_string(),
         CType::Named(name) => name.clone(),
     }
 }

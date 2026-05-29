@@ -17,10 +17,6 @@ pub enum CType {
     U64,
     F32,
     Pointer(Box<CType>),
-    FunctionPointer {
-        inputs: Vec<CType>,
-        outputs: Vec<CType>,
-    },
     Named(String),
 }
 

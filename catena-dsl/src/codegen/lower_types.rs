@@ -28,6 +28,8 @@ pub enum CType {
 pub enum LowerTypeError {
     #[error("closure type `=>` survived representation lowering")]
     ClosureSurvived,
+    #[error("runtime function pointer type `->` is not supported by this backend")]
+    FunctionPointerRuntime,
     #[error("type `{0:?}` has no runtime representation")]
     NoRuntimeRepresentation(Tree<(), Operation>),
     #[error("type constructor `{name}` expected {expected} children, found {actual}")]
@@ -48,12 +50,8 @@ pub fn lower_type(ty: &Tree<(), Operation>) -> Result<LoweredType, LowerTypeErro
     }
 
     match ty {
-        Tree::Node(op, 0, children) if op.as_str() == "->" => {
-            let [source, target] = expect_binary(op.as_str(), children)?;
-            Ok(LoweredType::Runtime(CType::FunctionPointer {
-                inputs: lower_interface(source)?,
-                outputs: lower_interface(target)?,
-            }))
+        Tree::Node(op, 0, _children) if op.as_str() == "->" => {
+            Err(LowerTypeError::FunctionPointerRuntime)
         }
         Tree::Node(op, 0, children) if op.as_str() == "gpu.buf" || op.as_str() == "buf" => {
             let [element] = expect_unary(op.as_str(), children)?;
@@ -90,12 +88,8 @@ pub fn lower_runtime_type(ty: &Tree<(), Operation>) -> Result<CType, LowerTypeEr
         Tree::Node(op, 0, children) if op.as_str() == "f32" && children.is_empty() => {
             Ok(CType::F32)
         }
-        Tree::Node(op, 0, children) if op.as_str() == "->" => {
-            let [source, target] = expect_binary(op.as_str(), children)?;
-            Ok(CType::FunctionPointer {
-                inputs: lower_interface(source)?,
-                outputs: lower_interface(target)?,
-            })
+        Tree::Node(op, 0, _children) if op.as_str() == "->" => {
+            Err(LowerTypeError::FunctionPointerRuntime)
         }
         Tree::Node(op, 0, children) if op.as_str() == "gpu.buf" || op.as_str() == "buf" => {
             let [element] = expect_unary(op.as_str(), children)?;
@@ -160,20 +154,6 @@ fn expect_unary<'a>(
         _ => Err(LowerTypeError::InvalidArity {
             name: name.to_string(),
             expected: 1,
-            actual: children.len(),
-        }),
-    }
-}
-
-fn expect_binary<'a>(
-    name: &str,
-    children: &'a [Tree<(), Operation>],
-) -> Result<[&'a Tree<(), Operation>; 2], LowerTypeError> {
-    match children {
-        [lhs, rhs] => Ok([lhs, rhs]),
-        _ => Err(LowerTypeError::InvalidArity {
-            name: name.to_string(),
-            expected: 2,
             actual: children.len(),
         }),
     }
@@ -247,7 +227,7 @@ mod tests {
     }
 
     #[test]
-    fn function_pointers_lower_erased_interfaces() {
+    fn runtime_function_pointers_are_rejected() {
         let ty = node(
             "val",
             vec![node(
@@ -258,13 +238,10 @@ mod tests {
                 ],
             )],
         );
-        assert_eq!(
-            lower_type(&ty).unwrap(),
-            LoweredType::Runtime(CType::FunctionPointer {
-                inputs: vec![CType::Bool],
-                outputs: vec![CType::U64],
-            })
-        );
+        assert!(matches!(
+            lower_type(&ty),
+            Err(LowerTypeError::FunctionPointerRuntime)
+        ));
     }
 
     #[test]

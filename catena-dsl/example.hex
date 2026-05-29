@@ -22,8 +22,8 @@
   run
 ))
 
-# Tests that product types can be synthesized
-(def program test-name.bool.li : [] -> ( {(bool val) ({1 (bool val)} *)} -> val) = name.bool.li)
+# Exposing function pointers on an entrypoint is intentionally unsupported for now.
+#(def program test-name.bool.li : [] -> ( {(bool val) ({1 (bool val)} *)} ->) = name.bool.li)
 
 # Test that a product type inside another program synthesizes
 (def program run-copy : [] -> ({(bool val) (bool val)} *) = (
@@ -43,16 +43,18 @@
   #} = {
   #})
 
-(def program materialize-bool : {
-    ({gpu.state 1} * [args_tail.])
-    ({gpu.env [.args_tail]} * [args.])
-    ({gpu.state bool} * [coargs.])
-    (gpu.launch_params val)
-    ([.args coargs] ->)
-  }
-  ->
-  (bool gpu.buf val) =
-  gpu.materialize)
+# This has a top-level function pointer input, so it cannot be a backend entrypoint
+# until we monomorphize/specialize it at a known function symbol.
+#(def program materialize-bool : {
+#    ({gpu.state 1} * [args_tail.])
+#    ({gpu.env [.args_tail]} * [args.])
+#    ({gpu.state bool} * [coargs.])
+#    (gpu.launch_params val)
+#    ([.args coargs] ->)
+#  }
+#  ->
+#  (bool gpu.buf val) =
+#  gpu.materialize)
 
 
 # Partial application of 'and' to its first arg.

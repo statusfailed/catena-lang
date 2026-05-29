@@ -37,7 +37,7 @@
     ({gpu.env [.args_tail]} * [args.])
     ({gpu.state bool} * [coargs.])
     (gpu.launch_params val)
-    ([.args coargs] -> val)
+    ([.args coargs] ->)
   }
   ->
   (bool gpu.buf val) =

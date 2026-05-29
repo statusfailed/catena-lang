@@ -13,6 +13,7 @@
 //! - Keep the mapping of catena-dsl types to GPU types as its own file: for now, just pick one
 //!   for bool, and synth a function type for (A -> B) fns.
 
+pub mod fn_ptrs;
 pub mod gpu;
 pub mod lower_types;
 mod prelude;

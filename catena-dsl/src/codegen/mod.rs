@@ -61,6 +61,7 @@ pub enum CodegenError {
     },
 }
 
+// Turn a single type-annotated, lowered definition into a [`StructuredProgram`]
 fn codegen_definition(
     qualified_name: &str,
     term: &AnnotatedTerm,

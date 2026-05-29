@@ -63,6 +63,8 @@ pub fn compile(raw_theories: RawTheorySet) -> Result<CompileReport, CompileFailu
     Ok(report)
 }
 
+// Helper for `compile` which exists so `compile` can return
+// `Result<CompileReport, CompileFailure>`
 fn compile_into(report: &mut CompileReport) -> Result<(), CompileError> {
     let elaborated = crate::elaborate::elaborate(report.raw_theories.clone())?;
     report.elaborated = Some(elaborated.clone());

@@ -1,7 +1,7 @@
-//! GPU codegen via [`catena::StructuredProgram`]
+//! HIP codegen
 //!
-//! For each annotated, transformed definition, we should have a number of definitions which
-//! only contain the syntax defined in stdlib/base.
+//! Accepts a *closure-converted* catena program, and generates GPU code.
+//! NOTE: this module has to generate functions
 //!
 //! We can now *compile* these into GPU code via the [`catena::StructuredProgram`] interface.
 //! Here's the spec:
@@ -14,6 +14,7 @@
 //!   for bool, and synth a function type for (A -> B) fns.
 
 pub mod gpu;
+mod prelude;
 mod types;
 
 use std::collections::BTreeMap;

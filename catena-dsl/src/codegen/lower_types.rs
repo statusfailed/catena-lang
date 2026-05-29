@@ -61,9 +61,7 @@ pub fn lower_type(ty: &Tree<(), Operation>) -> Result<LoweredType, LowerTypeErro
                 lower_runtime_type(element)?,
             ))))
         }
-        Tree::Node(op, 0, children)
-            if is_gpu_control_type(op.as_str()) && children.is_empty() =>
-        {
+        Tree::Node(op, 0, children) if is_gpu_control_type(op.as_str()) && children.is_empty() => {
             Ok(LoweredType::Runtime(CType::Named(c_name_for_gpu_control(
                 op.as_str(),
             ))))
@@ -82,9 +80,7 @@ pub fn lower_runtime_type(ty: &Tree<(), Operation>) -> Result<CType, LowerTypeEr
     }
 
     match ty {
-        Tree::Node(op, 0, children) if op.as_str() == "1" && children.is_empty() => {
-            Ok(CType::Unit)
-        }
+        Tree::Node(op, 0, children) if op.as_str() == "1" && children.is_empty() => Ok(CType::Unit),
         Tree::Node(op, 0, children) if op.as_str() == "bool" && children.is_empty() => {
             Ok(CType::Bool)
         }
@@ -105,9 +101,7 @@ pub fn lower_runtime_type(ty: &Tree<(), Operation>) -> Result<CType, LowerTypeEr
             let [element] = expect_unary(op.as_str(), children)?;
             Ok(CType::Pointer(Box::new(lower_runtime_type(element)?)))
         }
-        Tree::Node(op, 0, children)
-            if is_gpu_control_type(op.as_str()) && children.is_empty() =>
-        {
+        Tree::Node(op, 0, children) if is_gpu_control_type(op.as_str()) && children.is_empty() => {
             Ok(CType::Named(c_name_for_gpu_control(op.as_str())))
         }
         _ => Err(LowerTypeError::NoRuntimeRepresentation(ty.clone())),
@@ -152,9 +146,7 @@ fn value_inner(ty: &Tree<(), Operation>) -> Result<Option<&Tree<(), Operation>>,
 
 fn contains_closure(ty: &Tree<(), Operation>) -> bool {
     match ty {
-        Tree::Node(op, _, children) => {
-            op.as_str() == "=>" || children.iter().any(contains_closure)
-        }
+        Tree::Node(op, _, children) => op.as_str() == "=>" || children.iter().any(contains_closure),
         _ => false,
     }
 }
@@ -219,7 +211,10 @@ mod tests {
 
     #[test]
     fn plain_type_level_objects_erase() {
-        assert_eq!(lower_type(&node("f32", vec![])).unwrap(), LoweredType::Erased);
+        assert_eq!(
+            lower_type(&node("f32", vec![])).unwrap(),
+            LoweredType::Erased
+        );
         assert_eq!(lower_type(&leaf(0)).unwrap(), LoweredType::Erased);
     }
 
@@ -247,10 +242,7 @@ mod tests {
         );
         assert_eq!(
             lower_interface(&ty).unwrap(),
-            vec![
-                CType::Named("catena_gpu_env_t".to_string()),
-                CType::Bool
-            ]
+            vec![CType::Named("catena_gpu_env_t".to_string()), CType::Bool]
         );
     }
 

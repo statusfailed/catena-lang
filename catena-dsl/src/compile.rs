@@ -41,7 +41,7 @@ pub enum CompileError {
 //
 // - Elaborates input to include function names (finitary CMC)
 // - Typechecks
-// - Generates a `StructuredProgram` for each definition
+// - Generates GPU codegen artifacts for each definition
 // - Renders GPU source artifacts
 // - Produces a CompileReport which contains all intermediate data, including graphs rendered with
 //   open-hypergraphs-dot for each definition + the result of each pass.
@@ -90,9 +90,8 @@ fn compile_into(report: &mut CompileReport) -> Result<(), CompileError> {
     let forgotten_closures = crate::pass::forget_closures::run(&theory_set, &definition_types)?;
     report.forgotten_closures = Some(forgotten_closures.clone());
 
-    // Compute StructuredPrograms
-    let structured_programs = crate::codegen::codegen(&forgotten_closures)?;
-    report.structured_programs = Some(structured_programs);
+    let gpu_modules = crate::codegen::codegen(&forgotten_closures)?;
+    report.gpu_modules = Some(gpu_modules);
 
     Ok(())
 }

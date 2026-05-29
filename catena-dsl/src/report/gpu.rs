@@ -1,40 +1,22 @@
 use std::{fs, io, path::Path};
 
-use crate::{codegen::gpu::render_program, report::CompileReport};
+use crate::{codegen::gpu::render_module, report::CompileReport};
 
 pub fn dump_gpu(report: &CompileReport, dir: &Path) -> io::Result<()> {
-    let (Some(structured_programs), Some(forgotten_closures)) =
-        (&report.structured_programs, &report.forgotten_closures)
-    else {
+    let Some(gpu_modules) = &report.gpu_modules else {
         return Ok(());
     };
 
     fs::create_dir_all(dir)?;
 
-    for (theory_id, programs) in structured_programs {
-        for (definition_name, program) in programs {
-            let term = forgotten_closures
-                .get(theory_id)
-                .and_then(|defs| defs.get(definition_name))
-                .ok_or_else(|| {
-                    io::Error::new(
-                        io::ErrorKind::InvalidData,
-                        format!("missing transformed term for `{theory_id}.{definition_name}`"),
-                    )
-                })?;
-            let rendered = render_program(program, term).map_err(|error| {
-                io::Error::new(
-                    io::ErrorKind::InvalidData,
-                    format!(
-                        "failed to render GPU code for `{theory_id}.{definition_name}`: {error}"
-                    ),
-                )
-            })?;
-            fs::write(
-                dir.join(format!("{theory_id}.{definition_name}.cpp")),
-                rendered,
-            )?;
-        }
+    for (definition_name, module) in gpu_modules {
+        let rendered = render_module(module).map_err(|error| {
+            io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("failed to render GPU code for `program.{definition_name}`: {error}"),
+            )
+        })?;
+        fs::write(dir.join(format!("program.{definition_name}.cpp")), rendered)?;
     }
 
     Ok(())

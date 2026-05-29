@@ -17,12 +17,16 @@ pub struct FnPtrSymbol {
 
 #[derive(Debug, Error)]
 pub enum FnPtrSymbolError {
-    #[error("function pointer symbol `{operation}` should produce exactly one target, found {target_count}")]
+    #[error(
+        "function pointer symbol `{operation}` should produce exactly one target, found {target_count}"
+    )]
     InvalidTargetCount {
         operation: Operation,
         target_count: usize,
     },
-    #[error("function pointer symbol `{operation}` should not overwrite an existing symbol on node {node}")]
+    #[error(
+        "function pointer symbol `{operation}` should not overwrite an existing symbol on node {node}"
+    )]
     DuplicateNodeSymbol { operation: Operation, node: usize },
     #[error("generated function pointer target `{0}` is not a valid operation")]
     InvalidTargetOperation(String),
@@ -62,9 +66,9 @@ pub fn direct_fn_ptr_symbols(term: &AnnotatedTerm) -> Result<FnPtrNodeMap, FnPtr
         symbols.insert(
             *target,
             FnPtrSymbol {
-                target: target_name
-                    .parse()
-                    .map_err(|_| FnPtrSymbolError::InvalidTargetOperation(target_name.to_string()))?,
+                target: target_name.parse().map_err(|_| {
+                    FnPtrSymbolError::InvalidTargetOperation(target_name.to_string())
+                })?,
             },
         );
     }

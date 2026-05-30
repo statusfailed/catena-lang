@@ -10,7 +10,7 @@ pub enum LoweredType {
     Runtime(CType),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum CType {
     Unit,
     Bool,

@@ -10,7 +10,7 @@ const NAME_PREFIX: &str = "name.";
 
 pub type FnPtrNodeMap = HashMap<NodeId, FnPtrSymbol>;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct FnPtrSymbol {
     pub target: Operation,
 }

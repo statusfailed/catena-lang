@@ -24,33 +24,33 @@ typedef struct {
     uint64_t len;
 } catena_gpu_buf_t;
 
-static inline uint64_t catena_launch_len(catena_launch_params_t params) {
+__host__ __device__ static inline uint64_t catena_launch_len(catena_launch_params_t params) {
     return (uint64_t)params.grid_dim.x * params.grid_dim.y * params.grid_dim.z
         * params.block_dim.x * params.block_dim.y * params.block_dim.z;
 }
 
-static inline void bool_not(uint8_t arg0, uint8_t *out1) {
+__host__ __device__ static inline void bool_not(uint8_t arg0, uint8_t *out1) {
     *out1 = !arg0;
 }
 
-static inline void bool_or(uint8_t arg0, uint8_t arg1, uint8_t *out2) {
+__host__ __device__ static inline void bool_or(uint8_t arg0, uint8_t arg1, uint8_t *out2) {
     *out2 = arg0 || arg1;
 }
 
-static inline void bool_and(uint8_t arg0, uint8_t arg1, uint8_t *out2) {
+__host__ __device__ static inline void bool_and(uint8_t arg0, uint8_t arg1, uint8_t *out2) {
     *out2 = arg0 && arg1;
 }
 
-static inline void bool_id(uint8_t arg0, uint8_t *out1) {
+__host__ __device__ static inline void bool_id(uint8_t arg0, uint8_t *out1) {
     *out1 = arg0;
 }
 
-static inline void bool_copy(uint8_t arg0, uint8_t *out1, uint8_t *out2) {
+__host__ __device__ static inline void bool_copy(uint8_t arg0, uint8_t *out1, uint8_t *out2) {
     *out1 = arg0;
     *out2 = arg0;
 }
 
-static inline void bool_li(uint8_t arg0, uint8_t *out1) {
+__host__ __device__ static inline void bool_li(uint8_t arg0, uint8_t *out1) {
     *out1 = arg0;
 }
 "#;

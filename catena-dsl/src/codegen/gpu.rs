@@ -4,8 +4,8 @@ use hexpr::Operation;
 use thiserror::Error;
 
 use crate::codegen::{
-    GpuAssign, GpuFunction, GpuModule, GpuValue, GpuVar, lower_types::CType, prelude::GPU_PRELUDE,
-    runtime_type,
+    GpuAssign, GpuFunction, GpuModule, GpuModuleMap, GpuValue, GpuVar, lower_types::CType,
+    prelude::GPU_PRELUDE, runtime_type,
 };
 
 #[derive(Debug, Error)]
@@ -43,37 +43,59 @@ pub fn render_module(module: &GpuModule) -> Result<String, GpuRenderError> {
     let mut out = String::new();
     out.push_str(GPU_PRELUDE);
     out.push('\n');
+    render_module_body(&mut out, module)?;
+    Ok(out)
+}
 
+/// Render all generated GPU modules into one HIP/C++ translation unit.
+pub fn render_modules(modules: &GpuModuleMap) -> Result<String, GpuRenderError> {
+    let mut out = String::new();
+    out.push_str(GPU_PRELUDE);
+    out.push('\n');
+
+    for module in modules.values() {
+        render_function_decl(&mut out, &module.entry)?;
+    }
+    if !modules.is_empty() {
+        out.push('\n');
+    }
+
+    for module in modules.values() {
+        render_module_body(&mut out, module)?;
+        out.push('\n');
+    }
+
+    Ok(out)
+}
+
+fn render_module_body(out: &mut String, module: &GpuModule) -> Result<(), GpuRenderError> {
     // Materialization is represented in the dataflow body as one assignment, but HIP needs an
     // auxiliary `__global__` kernel in addition to the host wrapper function.
     for assignment in &module.entry.assignments {
         if assignment.op.as_str() == "gpu.materialize" {
-            render_materialize_kernel(&mut out, &materialize_kernel_name(assignment)?, assignment)?;
+            render_materialize_kernel(
+                out,
+                &materialize_kernel_name(&module.entry.name, assignment)?,
+                assignment,
+            )?;
             out.push('\n');
         }
     }
 
     // The entry function is the ordinary host-callable wrapper for this definition.
-    render_function(&mut out, &module.entry)?;
-    Ok(out)
+    render_function(out, &module.entry)?;
+    Ok(())
+}
+
+fn render_function_decl(out: &mut String, function: &GpuFunction) -> Result<(), GpuRenderError> {
+    out.push_str(&function_signature(function)?);
+    out.push_str(";\n");
+    Ok(())
 }
 
 fn render_function(out: &mut String, function: &GpuFunction) -> Result<(), GpuRenderError> {
-    out.push_str(&format!("void {}(", function.name));
-    let mut params = Vec::new();
-
-    // Sources render as ordinary parameters; targets render as output-pointer parameters.
-    for source in &function.sources {
-        params.push(param_decl(source, false)?);
-    }
-    for target in &function.targets {
-        params.push(param_decl(target, true)?);
-    }
-    out.push_str(&params.join(", "));
-    out.push_str(") {\n");
-
-    // Source variables are already declared by the function signature. Assignment outputs become
-    // local variables the first time they are produced.
+    out.push_str(&function_signature(function)?);
+    out.push_str(" {\n");
     let mut declared = function
         .sources
         .iter()
@@ -86,7 +108,7 @@ fn render_function(out: &mut String, function: &GpuFunction) -> Result<(), GpuRe
                 out.push_str(&format!("    {};\n", local_decl(output)?));
             }
         }
-        render_assignment(out, assignment)?;
+        render_assignment(out, function, assignment)?;
     }
 
     // Multiple outputs are returned by writing computed target wires into pointer parameters.
@@ -98,7 +120,40 @@ fn render_function(out: &mut String, function: &GpuFunction) -> Result<(), GpuRe
     Ok(())
 }
 
-fn render_assignment(out: &mut String, assignment: &GpuAssign) -> Result<(), GpuRenderError> {
+fn function_signature(function: &GpuFunction) -> Result<String, GpuRenderError> {
+    let qualifier = if function
+        .assignments
+        .iter()
+        .any(|assignment| assignment.op.as_str() == "gpu.materialize")
+    {
+        ""
+    } else {
+        "__host__ __device__ "
+    };
+    let mut signature = format!("{qualifier}void {}(", function.name);
+    let mut params = Vec::new();
+
+    // Sources render as ordinary parameters; targets render as output-pointer parameters.
+    for source in &function.sources {
+        params.push(param_decl(source, false)?);
+    }
+    for target in &function.targets {
+        params.push(param_decl(target, true)?);
+    }
+    signature.push_str(&params.join(", "));
+    signature.push(')');
+    Ok(signature)
+}
+
+fn render_assignment(
+    out: &mut String,
+    function: &GpuFunction,
+    assignment: &GpuAssign,
+) -> Result<(), GpuRenderError> {
+    if let Some(symbol) = &assignment.call_symbol {
+        return render_call(out, symbol, assignment);
+    }
+
     match assignment.op.as_str() {
         "bool.t" => {
             let [] = assignment.inputs.as_slice() else {
@@ -132,13 +187,37 @@ fn render_assignment(out: &mut String, assignment: &GpuAssign) -> Result<(), Gpu
         "bool.ifc" => render_bool_ifc(out, assignment)?,
         "unit.intro" => {}
         "eval" => render_eval(out, assignment)?,
-        "gpu.materialize" => render_materialize_call(out, assignment)?,
+        "gpu.materialize" => render_materialize_call(out, function, assignment)?,
         op => {
             return Err(GpuRenderError::UnsupportedOp(
                 op.parse().unwrap_or_else(|_| assignment.op.clone()),
             ));
         }
     }
+    Ok(())
+}
+
+fn render_call(
+    out: &mut String,
+    symbol: &str,
+    assignment: &GpuAssign,
+) -> Result<(), GpuRenderError> {
+    let mut call_args = assignment
+        .inputs
+        .iter()
+        .filter_map(|input| match input {
+            GpuValue::Var(var) if runtime_type(var).is_some() => Some(var.name.clone()),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    call_args.extend(
+        assignment
+            .outputs
+            .iter()
+            .filter(|output| runtime_type(output).is_some())
+            .map(|output| format!("&{}", output.name)),
+    );
+    out.push_str(&format!("    {symbol}({});\n", call_args.join(", ")));
     Ok(())
 }
 
@@ -255,7 +334,11 @@ fn render_materialize_kernel(
     Ok(())
 }
 
-fn render_materialize_call(out: &mut String, assignment: &GpuAssign) -> Result<(), GpuRenderError> {
+fn render_materialize_call(
+    out: &mut String,
+    function: &GpuFunction,
+    assignment: &GpuAssign,
+) -> Result<(), GpuRenderError> {
     let [output] = assignment.outputs.as_slice() else {
         return Err(invalid_outputs(assignment, 1));
     };
@@ -268,7 +351,7 @@ fn render_materialize_call(out: &mut String, assignment: &GpuAssign) -> Result<(
     };
     let (launch, _func, args) = materialize_parts(assignment)?;
     let launch = value_expr(launch);
-    let kernel_name = materialize_kernel_name(assignment)?;
+    let kernel_name = materialize_kernel_name(&function.name, assignment)?;
 
     out.push_str(&format!(
         "    uint64_t {name}_len = catena_launch_len({launch});\n",
@@ -321,12 +404,7 @@ fn materialize_parts(
     let func = assignment
         .inputs
         .iter()
-        .find(|input| {
-            matches!(
-                input,
-                GpuValue::FnSymbol(_)
-            )
-        })
+        .find(|input| matches!(input, GpuValue::FnSymbol(_)))
         .ok_or(GpuRenderError::MissingMaterializeFunction)?;
     let args = assignment
         .inputs
@@ -336,11 +414,14 @@ fn materialize_parts(
     Ok((launch, func, args))
 }
 
-fn materialize_kernel_name(assignment: &GpuAssign) -> Result<String, GpuRenderError> {
+fn materialize_kernel_name(
+    function_name: &str,
+    assignment: &GpuAssign,
+) -> Result<String, GpuRenderError> {
     let [output] = assignment.outputs.as_slice() else {
         return Err(invalid_outputs(assignment, 1));
     };
-    Ok(format!("materialize_{}", output.name))
+    Ok(format!("materialize_{}_{}", function_name, output.name))
 }
 
 fn param_decl(var: &GpuVar, by_pointer: bool) -> Result<String, GpuRenderError> {

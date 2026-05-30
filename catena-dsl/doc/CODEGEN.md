@@ -3,10 +3,11 @@
 Catena DSL's codegen has a few overlapping concerns:
 
 - Representation lowering: we need C runtime representations for all metacat types
-- Monomorphisation: a function with type parameters may requiring multiple versions of the 'same' templated C function
+- Monomorphisation & Entrypoints
+    - A function with type parameters may requiring multiple versions of the 'same' templated C function
+    - How do we decide which definitions are exposed as C functions with a predictable ABI?
 - Host/device distinction: some functions may be needed on host, device, or both!
 - Kernels: some operations (gpu materialize) cannot be run as a normal C function, but MUST be launched as a kernel.
-- Entrypoints: which catena functions can be *called*? Which ones are entrypoints?
 
 The following subsections describe each problem in more detail, and sketch
 a solution.
@@ -31,8 +32,9 @@ For example:
 Thus, we can map each interface `Vec<Type>` to a `Vec<LoweredType>`;
 when rendering, `Erased` values will simply not appear.
 
-## Monomorphisation
+## Monomorphisation and Entrypoints
 
+Monomorphisation and entrypoints are two (very related) problems.
 Consider the polymorphic identity function
 
     id : A -> A
@@ -43,13 +45,36 @@ What C code should this serialize to?
         *r0 = x
     }
 
-C++ templates aside, we clearly need to generate this code with a type.
-Thus, if an annotated definition
+Clearly we cannot synthesize a C function for the general declared type of `id`.
+However, many of its *specialisations* can be synthesized.
+For example, if we use it with `A = val(bool)`, we'd expect
 
-**Solution**
+    void id__bool(bool x0, bool* r0) {
+        *r0 = x
+    }
 
-Monomorphize by generating the same 'template' implementation for each set of
-type parameters used -- the "specialization key".
+Now, when generating code intended to be called externally, we also want:
+
+- A predictable function symbol name ("id" would be perfect!)
+- A *monomorphic* type (i.e., there's only one variant to call!)
+- The *definition* to only call *specialised* instantiations
+
+This third point means that every *call* to an operation must be *monomorphic*.
+To sketch our solution:
+
+- A "monomorphic" type is one which has a single type representation
+- Codegen also records a list of *monomorphic entrypoints*
+    - (an entrypoint is simply a definition whose type is already monomorphic)
+- Within each definition body...
+    - Polymorphic usages of a definition cause an error
+    - Each monomorphic usage of an operation (or definition) generates a specialisation
+
+**Solution Detail**
+
+Entrypoints are exactly those definitions declared with a monomorphic type.
+Then monomorphize any polymorphic definitions by generating the same 'template'
+implementation for each set of type parameters used -- the "specialization
+key".
 For example, suppose we have
 
     (def program id : a -> a = [x])
@@ -65,7 +90,8 @@ specialisation of `id`.
     // different types.
     void id_0(bool x0, bool* r0) { ... }
 
-So in general, codegen does *not* synthesize a definition unless it is actually used with a specific type.
+So in general, codegen does *not* synthesize a definition unless it is actually
+used with a specific type.
 In fact, what we do is:
 
 - For each op, definition, create a mapping `Name → List<Vec<Type>>`, where `Type` is a `Tree`
@@ -110,46 +136,6 @@ The actual definition must be a `__global__` (i.e., a kernel).
 
 The solution is we synthesize both the global definition -- prefixed with
 `__global__` -- as well as a 'wrapper function' that calls it.
-
-## Entrypoints
-
-Each definition may be...
-
-- Inlined
-- Generated as a C function
-    - Either as an entrypoint or not
-
-Suppose we have a couple definitions like this:
-
-```hex
-# Boolean examples
-(def program not : (bool val) -> (bool val) = bool.not)
-
-# Test we can use other definnitions
-(def program use-not : (bool val) -> (bool val) = not)
-```
-
-The latter two should compile. We expect `not` to compile to this:
-
-```c
-void not(bool x0, bool* r0) {
-    r0 = bool_not(x0) // calls builtin bool_not
-}
-```
-
-and `use-not` to this:
-
-```c
-void use_not(bool x0, bool* r0) {
-    r0 = not(x0) // calls our definition of `not`
-}
-```
-
-The codegen module does the following:
-
-- Accept a list of entrypoint names
-- Ensure each is monomorphic
--
 
 # Deficiencies
 

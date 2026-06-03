@@ -8,6 +8,7 @@ pub mod elaborate;
 pub mod lower;
 pub mod scope;
 pub mod shallow;
+pub mod stdlib;
 pub mod structured;
 
 pub mod check;

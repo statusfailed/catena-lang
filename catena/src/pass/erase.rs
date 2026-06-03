@@ -10,19 +10,45 @@ use open_hypergraphs::lax::{
 #[derive(Clone)]
 pub struct Erase {
     value: Option<&'static str>,
+    recursive: bool,
 }
 
 impl Erase {
     pub fn default_value() -> Self {
-        Self { value: None }
+        Self {
+            value: None,
+            recursive: false,
+        }
     }
 
     pub fn with_value(value: &'static str) -> Self {
-        Self { value: Some(value) }
+        Self {
+            value: Some(value),
+            recursive: true,
+        }
+    }
+
+    pub fn with_value_shallow(value: &'static str) -> Self {
+        Self {
+            value: Some(value),
+            recursive: false,
+        }
     }
 
     fn is_value(&self, o: &Obj) -> bool {
-        contains_value(o, self.value.unwrap_or("value"))
+        let value = self.value.unwrap_or("value");
+        if self.recursive {
+            contains_value(o, value)
+        } else {
+            is_value_marker(o, value)
+        }
+    }
+}
+
+fn is_value_marker(o: &Obj, value: &str) -> bool {
+    match o {
+        Tree::Node(label, _, _) => label.to_string() == value,
+        _ => false,
     }
 }
 
@@ -55,6 +81,20 @@ mod tests {
         );
 
         assert!(Erase::with_value("val").is_value(&object));
+    }
+
+    #[test]
+    fn shallow_detection_ignores_nested_value_marker() {
+        let object = Tree::Node(
+            op("*"),
+            0,
+            vec![
+                Tree::Node(op("1"), 0, vec![]),
+                Tree::Node(op("val"), 0, vec![Tree::Node(op("f32"), 0, vec![])]),
+            ],
+        );
+
+        assert!(!Erase::with_value_shallow("val").is_value(&object));
     }
 }
 

@@ -17,6 +17,9 @@ pub fn render_analysis(graph: &CompileGraph) -> std::io::Result<Vec<u8>> {
         "analysis expects a data graph"
     );
 
+    // I don't know if it is too strict, but I cannot imagine a case when it is not true
+    // better fail early and loud if I am wrong!
+    assert_interleaved_control_operations_are_unary(&graph.graph);
     let boundary_wires = BoundaryWires::from_graph(&graph.graph);
     let _regions = partition_regions(&graph.graph, &boundary_wires);
     render_step(AnalysisStep::NormalizedGraph, graph)
@@ -169,6 +172,22 @@ fn is_interleaved_control_operation(graph: &Graph, operation_id: usize) -> bool 
         operation_kind(operation_name(graph, operation_id)),
         OperationKind::InterleavedControl
     )
+}
+
+fn assert_interleaved_control_operations_are_unary(graph: &Graph) {
+    for operation_id in 0..operation_count(graph) {
+        if !is_interleaved_control_operation(graph, operation_id) {
+            continue;
+        }
+
+        let input_count = operation_inputs(graph, operation_id).count();
+        let output_count = operation_outputs(graph, operation_id).count();
+        assert!(
+            input_count == 1 && output_count == 1,
+            "analysis expects interleaved control operations to have arity 1 -> 1, but operation #{operation_id} `{}` has arity {input_count} -> {output_count}",
+            operation_name(graph, operation_id)
+        );
+    }
 }
 
 fn operation_wires(graph: &Graph, operation_id: usize) -> impl Iterator<Item = NodeId> {

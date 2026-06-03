@@ -16,14 +16,15 @@ If we have
 
     len : val(buf n t) -> val(u64)
 
-we can test the `val(u64)`, but we cannot *use* its "non-zeroness"!
-We need a type-level name for the value.
+we can test the `val(u64)`, but we cannot *use* its "non-zeroness" as a proven
+fact. To do this, we need a type-level name for the value.
 Example:
 
     # val(n, u64)
     len : val(buf n t) -> (n : u64)
 
-Here, the `n` refer to the same thing. Then we can read
+Here, `n` is a type-level name for the length of the input buffer.
+In general, we can read
 
     x : t
 
@@ -32,36 +33,42 @@ as meaning:
 - There is a runtime value of type t
 - Its 'type level / symbolic name' is x
 
-In this formulation, we basically just have `val` meaning an *anonymous* (not
-type-level-named) value. E.g.,
+In this formulation, `val` means an *anonymous* (not type-level-named) value.
+We could introduce an isomorphism with `:` as follows:
 
+    # forget the name of 'x'
     forget_name : (x : t) -> val(t)
-    existence : val(t) -> |- ∃ x . (x : t)
 
-# Buffers, Predicates
+    # generate a fresh name for the anonymous value
+    # NOTE: x' here and the x above are distinct by construction- we are *not*
+    # really using textual representations of names here.
+    fresh_name : val(t) -> (x' : t)
 
-Values are most useful for (dependently-typed-sized) buffers and indices.
-Suppose we want to write `head-or-default`:
+# Values, Buffers, and Predicates
+
+Values are most useful for reasoning at compile time about buffer lengths.
+Suppose we want to write `head-or-default`, which returns the first element of
+a buffer, or a default if it has zero length.
 
     head-or-default : val(buf n t) ● val(t) -> val(t)
 
-We need to get the zero index using `ix.zero`
+If a buffer has nonzero length, we can get a zero index value:
 
     ix.zero : |- n > 0 -> val(ix n)
 
-And then we can use this to index the buffer value.
-But how do we get a `|- n > 0`?
+This can be used to index the buffer - but how do we get a `|- n > 0`, i.e. a
+proof that `n > 0`?
 
-Obviously, if we have an *arbitrary* `n`, this may not be true.
+Obviously, if we have an *arbitrary* `n`, this fact may not be true.
 So we have to test it with a branch!
 
-In general, there are actually two approaches to 'gaining information':
+In general, there are actually two approaches to 'gaining information' like this:
 
 1. We branch, receiving `|- P` in the positive branch, and `|- ¬ P` in the other.
 2. We *assert*, giving the whole program partial function semantics
 
 Let's consider (2) to simplify things for now.
-We can add primitives like `assert-gt`:
+We can add a primitive like `assert-gt`:
 
     # *partial* assertion, which crashes the whole program unless `x > y`
     u64.assert-gt : (x : u64) ● (y : u64) -> (|- x > y)
@@ -75,7 +82,7 @@ decomposing into `gt` and `if`!
 
 Can this be fixed?
 
-# Linking test values (bools) to proofs
+# Linking runtime test values (bools) to proofs
 
 Suppose we have a primitive
 
@@ -104,9 +111,11 @@ Then we can write something like:
     # b_false : |- b = false
     # h_false : |- b = true => ¬ (x > y)
     if (\b_true a -> (modus_ponens(h_true, b_true)) ...)   # h_true b_true : |- x > y
-       (\b_false a -> (h_false b_false) ...)
+       (\b_false a -> (modus_ponens(h_false, b_false)) ...)
 
 # Lifting code to syntax
+
+(TODO!)
 
 This "lifting" feels as if it should be *automatic*: essentially, we are "lifting" our `u64.gt` primitive to the type level
 by having it output an assertion we can use.
@@ -124,10 +133,11 @@ Maybe we really want something like `[| u64.gt(x, y) |] = true`?
 As well as the branching approach, can we also make an "assert" which is compositional?
 Idea:
 
-    # partial: crashes unless b = true
-    assert : (b : bool) ● (|- b = true => p) -> (|- p)
+    # partial: crashes unless b really is true at runtime
+    assert : (b : bool) -> (|- b = true)
 
-(here's my use-case: discovering that a `buf n t` has length `n` greater than `0`.)
+This basically lifts a boolean to type level, crashing if it is not true.
+Use case: asserting that a `buf n t` has nonzero length:
 
 - Have `buf n t`, but know nothing about `n`
 - Want to get a zero index `Ix n`, but this only exists for `n > 0`
@@ -135,13 +145,5 @@ Idea:
 - This links the runtime bool `b` with the type-level assertions that `x > y` and `¬ x > y`
 - By adding an `assert` primitive, we could eliminate the bool, so that we have a `|- u64.gt(x, y)` value
 - ... and the program will *crash* if this is not true
-- This basically simplifies control flow
 
-
-    Ix n ● buf n t -> t
-
-    View ? ● buf n t -> t
-    
-    ?? should encode a safe function into n from Env ??
-
-- We have 
+Using `assert` instead of explicit branching makes control flow a lot simpler here.

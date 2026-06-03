@@ -3,7 +3,8 @@
 This document concerns the design of *buffers*, *indices*, and *index spaces* in catena.
 In short:
 
-- Buffers are memory regions with dependent-typed size
+- *Memory* is untyped, sized (in bytes) regions of memory (in C, pairs of `void*, size_t`)
+- Buffers are contiguous sequences of elements of some type, with dependent-typed size
 - Indices represent *positions* in a buffer
 - Index spaces are the sets representing the *sizes* of buffers and indices
     - they are *iterable*
@@ -35,6 +36,7 @@ Thus:
 
 **The main memory types in catena** are therefore:
 
+- `mem`: an owned block of memory, conceptually a pair `(void*, size_t)`
 - `buf n t`: an owned buffer of `n` elements of type `t`. `n` must be a type-level u64 here.
 - `ref n t`: same as `buf`, but merely a read-only reference; can be copied freely but not written to.
     - Used primarily for passing in model weights
@@ -45,15 +47,15 @@ ugly head:
 
 > How do we get dependently-typed buffers into the program?
 
-Consider for example the `ref.head` program, which returns the first element of
+Consider for example the `head-or-zero` program, which returns the first element of
 an array reference, or zero for an empty reference.
 
-    ref.head-or-zero : val(ref n u32) -> val(u32)
+    head-or-zero : val(ref n u32) -> val(u32)
 
 This seems fine, but when we try to *lower* `ref.head`, we see a problem:
 
 1. `ref n u32` is not monomorphic: `n` is a free type variable
-2. If `ref n u32` lowers to a pointer, its size can never be measured (pointers don't have associated lengths)
+2. If `ref n u32` lowers to a raw pointer, its size can never be measured (raw pointers don't have associated lengths)
 
 So how do we write programs that deal with buffers of "proven size"?
 Some ideas:
@@ -70,24 +72,24 @@ Some ideas:
 Actually, what we'll go with is a kind of hybrid approach:
 
 - Add an opaque `mem` type, representing a sized handle to some *owned* memory
-    - Also a `mem` version
 - This is isomorphic to `void* × size_t` (and in fact lowers to it)
     - See [this tweet](https://x.com/ZPostFacto/status/2061537537932636194)
-- There is no runtime "fat pair", it actually ends up as two arguments
+- `mem` is not encoded as a "fat pointer" (explicit pair), but actually lowers
+  to two separate values
 - To recover a dependently typed buf, we have...
     - `mem -> buf n t ● (n : u64)`
+    - Notice that this explicitly links a runtime value `n : u64` with the buffer size.
 - Then we can test `n` explicitly, e.g.
-    - `nz : (n : u64) -> |- n > 0`
+    - `assert-nz : (n : u64) -> |- n > 0`
 
-NOTE: for this to work, we need "type ascription"; i.e., named variables at the
-type level!
-This allows us to name runtime values at type level!
+In order to make this work, we're missing a couple things:
 
-**NOTE: BELOW HERE IS WIP NOTES**
+- A way to recover information about types (`assert`, branches)
+- Type ascription (`n : u64`)
 
-# Detail
+# Buffers, Indices, and Finite Spaces
 
-Let's look at each part of the design in detail (WIP)
+This section covers the basic types, and their intended meanings
 
 ## Buffers
 
@@ -107,10 +109,11 @@ Some design notes:
 
 ## Indices
 
+TODO
+
 ## Finite Spaces
 
-These are the least well defined. However, 
-
+TODO
 
 # Examples
 
@@ -123,9 +126,11 @@ non-zero size, and gives the zero index.
 
     index.zero : (|- size(s) > 0) -> val(ix s)
 
+(I beg the reader's forgiveness: please assume an appropriate `size` exists
+here).
 We also need to be able to look up elements in a buf or ref at their index:
 
-    ref.ix : val(Ix n) ● val(ref n t) -> val(t)
+    ix : val(ix n) ● val(ref n t) -> val(t)
 
 Using this, we can write the `ref.head` function, returning the first element of a non-zero buffer.
 
@@ -133,71 +138,23 @@ Using this, we can write the `ref.head` function, returning the first element of
     ref.head = ({index.zero id} ref.ix)
 
 But where should we get the proof `|- size(n) > 0` from?
+Naturally, this does *not* hold in general: some `n` are zero sized!
 
+This is where we need to either branch or `assert`:
+
+    assert : (b : bool) ● (|- b = true => p) -> |- p
+
+this lets us conclude `p` from a runtime value.
+When `p` is false, the program stops (partial).
+
+Combining this with a *witnessed test* lets us obtain a `|- size(n) > 0`;
+for example:
+
+    u64.nz : (x : u64) -> (b : bool) ● (|- b = true => size(x) > 0) ● (|- b = false => ¬ (size(x) > 0))
+
+Using the 'true' branch proposition with `assert` and `b` allows us to construct `|- size(x) > 0`.
 
 ## Multiplying by identity matrix
 
 (TODO: this example is complicated and incomplete!)
 
-Suppose we define the f32 identity matrix for any square 2D finite space as follows
-
-    id : Fin (n, n) => f32
-    id (i, j) = f32.from-bool (ix.eq i j)
-
-This compares i and j, and returns a f32 1 if they are equal.
-Now suppose we want to multiply `id` by an input buffer.
-
-There's a few pieces missing:
-
-- The boundaries of the program can only accept a `buf n t` for free `n` with no 
-
-    # multiply a n×n-sized buffer interpreted in row-major order by the identity matrix
-    mul-id : buf (n*n) f32 -> (Ix (n, n) => f32)
-    mul-id b = ???
-
-Conceptually, this is precisely what we want!
-However, something is missing:
-
-The type `buf (n * n) f32` is not monomorphisable
-
-
-    # need a primitive
-    index.zero : (|- n > 0) -> val(t)
-
-    # need
-    assert.positive : val(n) -> (|- n > 0)
-
-    array.head-or-zero : buf n t -> t
-    array.head-or-zero = if n > 0 {
-        // we have (|- n > 0) here
-    } else {
-        // we have (|- ¬ n > 0) here
-    }
-
-    // contract here is that buf has size n
-    void array_head_or_zero(*t buf, size_t n, *t result) {
-        if n == 0 {
-            *result = 0
-        } else {
-            *result = buf[0]
-        }
-    }
-
-    // first problem: buf n t is not monomorphizable because n is free
-
-    foo : buf (n + m) t
-
-
-- mem (internally is just a pair of a pointer and a len)
-
-
-
-    # now we transform n → (a + b)
-    u32.from-mem : mem -> buf n u32
-
-
-    # this is similar to reshape(?)
-    buf.substitute : val(buf x t) ● (|- x = y) -> val(buf y t)
-
-    suppose have p : |- a + b = n
-    buf.substitute : 

@@ -1,6 +1,8 @@
 use std::path::PathBuf;
 
-use catena::compile::{CompilePipeline, CompileRequest, CudaOptions, Emit, OutputFormat, compile};
+use catena::compile::{
+    CompilePipeline, CompileRequest, CudaOptions, Emit, OutputFormat, cfg::CfgOptions, compile,
+};
 use clap::{Parser, Subcommand, ValueEnum};
 
 #[derive(Parser)]
@@ -60,6 +62,14 @@ enum Command {
         /// Proof certificate file(s) to check before compiling.
         #[arg(long = "proof", num_args = 1..)]
         proof: Vec<PathBuf>,
+
+        /// Keep monoidal-structure operations in CFG output for debugging.
+        #[arg(long = "cfg-keep-monoidal-operations")]
+        cfg_keep_monoidal_operations: bool,
+
+        /// Keep control-flow-only operations in CFG output for debugging.
+        #[arg(long = "cfg-keep-control-flow-operations")]
+        cfg_keep_control_flow_operations: bool,
     },
 }
 
@@ -67,6 +77,7 @@ enum Command {
 enum EmitArg {
     Cuda,
     CompileGraph,
+    Cfg,
     Elaborated,
     Checked,
     StructuredIr,
@@ -94,6 +105,8 @@ fn main() -> anyhow::Result<()> {
             cuda_static,
             no_proof,
             proof,
+            cfg_keep_monoidal_operations,
+            cfg_keep_control_flow_operations,
         } => compile_command(
             paths,
             emit,
@@ -104,6 +117,8 @@ fn main() -> anyhow::Result<()> {
             cuda_static,
             no_proof,
             proof,
+            cfg_keep_monoidal_operations,
+            cfg_keep_control_flow_operations,
         ),
     }
 }
@@ -116,6 +131,7 @@ fn check_command(paths: Vec<PathBuf>, verbose: bool) -> anyhow::Result<()> {
         entry: None,
         format: None,
         cuda_options: CudaOptions::default(),
+        cfg_options: CfgOptions::default(),
         proof_check: false,
         proof_paths: Vec::new(),
     });
@@ -149,6 +165,7 @@ fn elaborate_command(paths: Vec<PathBuf>) -> anyhow::Result<()> {
         entry: None,
         format: None,
         cuda_options: CudaOptions::default(),
+        cfg_options: CfgOptions::default(),
         proof_check: false,
         proof_paths: Vec::new(),
     })?;
@@ -165,6 +182,8 @@ fn compile_command(
     cuda_static: Vec<(String, u64)>,
     no_proof: bool,
     proof: Vec<PathBuf>,
+    cfg_keep_monoidal_operations: bool,
+    cfg_keep_control_flow_operations: bool,
 ) -> anyhow::Result<()> {
     let mut static_values = std::collections::HashMap::new();
     for (name, value) in cuda_static {
@@ -180,6 +199,10 @@ fn compile_command(
         entry,
         format: format.map(Into::into),
         cuda_options: CudaOptions { static_values },
+        cfg_options: CfgOptions {
+            keep_monoidal_operations: cfg_keep_monoidal_operations,
+            keep_control_flow_operations: cfg_keep_control_flow_operations,
+        },
         proof_check: !no_proof,
         proof_paths: proof,
     })?;
@@ -222,6 +245,7 @@ impl From<EmitArg> for Emit {
         match value {
             EmitArg::Cuda => Emit::Cuda,
             EmitArg::CompileGraph => Emit::CompileGraph,
+            EmitArg::Cfg => Emit::Cfg,
             EmitArg::Elaborated => Emit::Elaborated,
             EmitArg::Checked => Emit::Checked,
             EmitArg::StructuredIr => Emit::StructuredIr,

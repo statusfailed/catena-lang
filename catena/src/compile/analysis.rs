@@ -7,6 +7,7 @@ use crate::{
         Graph, operation_count, operation_inputs, operation_name, operation_outputs,
     },
     compile::{CompileGraph, CompileTheory, graph_render},
+    hypergraph::subgraph::subgraph_from_operations,
     stdlib::operations::{OperationKind, operation_kind},
     union_find::UnionFind,
 };
@@ -21,7 +22,12 @@ pub fn render_analysis(graph: &CompileGraph) -> std::io::Result<Vec<u8>> {
     // better fail early and loud if I am wrong!
     assert_interleaved_control_operations_are_unary(&graph.graph);
     let boundary_wires = BoundaryWires::from_graph(&graph.graph);
-    let _regions = partition_regions(&graph.graph, &boundary_wires);
+    let regions = partition_regions(&graph.graph, &boundary_wires);
+    let _subgraphs = regions
+        .iter()
+        .map(|region| subgraph_from_operations(&graph.graph.h, region.operations.iter().copied()))
+        .collect::<Result<Vec<_>, _>>()
+        .expect("analysis region subgraphs should be valid");
     render_step(AnalysisStep::NormalizedGraph, graph)
 }
 

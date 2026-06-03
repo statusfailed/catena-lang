@@ -12,6 +12,9 @@
   # provability
   (arr |- : 1 -> 1)
 
+  # implication
+  (arr ==> : 2 -> 1)
+
   # Equality
   (arr = : 2 -> 1)
 })
@@ -26,6 +29,6 @@
   #   r0 : |- ψ
   (arr ax-mp : {[ph ps.] # two metavars
     ([.ph] |-)            # |- φ
-    ([.ph ps] => |-)      # |- (φ → ψ)
+    ([.ph ps] ==> |-)      # |- (φ → ψ)
   } -> ([ph ps . ps] |-)) # |- ψ
 })

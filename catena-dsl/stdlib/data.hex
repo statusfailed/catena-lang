@@ -16,6 +16,13 @@
   # assert (b : bool) -> (|- b = true)
   (arr assert : ({[b] bool} :) -> ({[b] bool.f} = |-))
 
+  # assert-then : (b : bool) (|- b = true => p) -> (|- p)
+  # implementation: ({ assert [h] } ax-mp )
+  (def assert-then : {[b p.]
+    ({[.b] bool} :)
+    ({({[.b] bool.f} =) [.p]} ==> |-)
+  } -> ([b p . p] |-) = ({assert [h]} ax-mp))
+
   # Boolean type literal.
   (arr bool.type : [] -> bool)
 

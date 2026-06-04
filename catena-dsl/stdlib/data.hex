@@ -60,4 +60,8 @@
   (arr bool.id : (bool val) -> (bool val))
   (arr bool.copy : (bool val) -> {(bool val) (bool val)})
   (def bool.li : (bool val) -> {1 (bool val)} = {unit.intro [a]})
+
+  ##############################################################################
+  # TODO: built in size of u64 bool, etc.
+  # u64.sizeof : I -> (s : u64) ● sizeof(u64, s)
 })

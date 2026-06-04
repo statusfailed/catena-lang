@@ -41,7 +41,6 @@ pub struct ControlRegionMorphism {
 struct ResolvedGraph {
     graph: Graph,
     morphism: ControlRegionMorphism,
-    projection: Vec<Option<ProjectionKey>>,
 }
 
 #[derive(Debug, Clone)]
@@ -113,7 +112,10 @@ fn expand_control_region(
     }
 }
 
-// Expand a `control.foo` operation from a data graph. If it has a child control definition, recursively expand that definition and remap its boundary projection to the unary interleaved call-site wire.
+// Expand a `control.foo` operation from a data graph. The native control child
+// may have many boundary wires, but the interleaved call site can expose them
+// through packed unary wires. Only child boundary projections are remapped to
+// the call site; internal wires stay unmapped.
 fn expand_interleaved_control_call(
     parent: &CompileGraph,
     operation_id: OperationId,
@@ -127,39 +129,38 @@ fn expand_interleaved_control_call(
         panic!("interleaved control operation `{operation}` must resolve to a native control graph")
     });
 
-    let resolved = expand_control_definition(child);
-    let wire_projection = remap_child_projection(&parent.graph, operation_id, child, &resolved);
+    let graph = inline_control_definitions(child);
+    let source_wires = boundary_table(&child.graph.s);
+    let target_wires = boundary_table(&child.graph.t);
+    let expanded_source_wires = boundary_table(&graph.s);
+    let expanded_target_wires = boundary_table(&graph.t);
+    let call_inputs = operation_inputs(&parent.graph, operation_id).collect::<Vec<_>>();
+    let call_outputs = operation_outputs(&parent.graph, operation_id).collect::<Vec<_>>();
+    let mut wire_projection = vec![None; graph.h.w.0.len()];
+    for (expanded_wire, source_wire) in expanded_source_wires.into_iter().zip(source_wires.iter()) {
+        wire_projection[expanded_wire.0] =
+            boundary_projection(*source_wire, &source_wires, &call_inputs);
+    }
+    for (expanded_wire, target_wire) in expanded_target_wires.into_iter().zip(target_wires.iter()) {
+        if wire_projection[expanded_wire.0].is_none() {
+            wire_projection[expanded_wire.0] =
+                boundary_projection(*target_wire, &target_wires, &call_outputs);
+        }
+    }
+    let operation_count = graph.h.x.0.len();
 
     TensorPiece {
-        graph: resolved.graph,
+        graph,
         wire_projection,
-        operation_projection: vec![operation_id; resolved.morphism.operations.len()],
+        operation_projection: vec![operation_id; operation_count],
     }
 }
 
 // Expand a native control graph by inlining non-primitive control operations
-// inside it. The returned projection marks only boundary wires; internal wires
-// intentionally stay unmapped so the parent quotient cannot identify them.
-fn expand_control_definition(graph: &CompileGraph) -> ResolvedGraph {
-    debug_assert!(matches!(graph.theory, CompileTheory::Control));
-    let original = graph.graph.clone();
-    let graph = inline_control_definitions(graph);
-    let projection = boundary_projection_for_expanded_control_graph(&graph, &original);
-    let operation_count = graph.h.x.0.len();
-    ResolvedGraph {
-        graph,
-        projection: projection.clone(),
-        morphism: ControlRegionMorphism {
-            wires: projection
-                .iter()
-                .map(|projection| projection.map(|projection| projection.wire))
-                .collect(),
-            operations: (0..operation_count).collect(),
-        },
-    }
-}
-
+// inside it. Mapping the expanded boundary to an interleaved call site is handled
+// by `expand_interleaved_control_call`.
 fn inline_control_definitions(graph: &CompileGraph) -> Graph {
+    debug_assert!(matches!(graph.theory, CompileTheory::Control));
     let definitions = graph
         .children
         .iter()
@@ -198,26 +199,6 @@ fn inline_control_definitions(graph: &CompileGraph) -> Graph {
         "too many control-definition inline iterations while expanding `{}`",
         graph.definition_name
     )
-}
-
-fn boundary_projection_for_expanded_control_graph(
-    graph: &Graph,
-    original: &Graph,
-) -> Vec<Option<ProjectionKey>> {
-    let mut projection = vec![None; graph.h.w.0.len()];
-    for (expanded, original) in boundary_table(&graph.s)
-        .into_iter()
-        .zip(boundary_table(&original.s))
-    {
-        projection[expanded.0] = Some(ProjectionKey::plain(original));
-    }
-    for (expanded, original) in boundary_table(&graph.t)
-        .into_iter()
-        .zip(boundary_table(&original.t))
-    {
-        projection[expanded.0] = Some(ProjectionKey::plain(original));
-    }
-    projection
 }
 
 // Tensor expanded pieces and quotient wires whose projection keys agree. The resulting graph keeps a public morphism to target wires, while branch-sensitive projection keys control which packed branch alternatives are identified.
@@ -334,7 +315,6 @@ fn quotient_resolved_pieces(
 
     ResolvedGraph {
         graph,
-        projection: class_projection.clone(),
         morphism: ControlRegionMorphism {
             wires: class_projection
                 .iter()
@@ -394,29 +374,6 @@ fn quotient_classes(
     }
 
     (class_by_wire, class_projection, class_labels)
-}
-
-// Translate a recursively expanded child definition's projection into the enclosing call graph. This is where multi-wire native control boundaries map through unary interleaved `control.foo` call boundaries.
-fn remap_child_projection(
-    call_graph: &Graph,
-    call_operation_id: OperationId,
-    child: &CompileGraph,
-    resolved: &ResolvedGraph,
-) -> Vec<Option<ProjectionKey>> {
-    let source_wires = boundary_table(&child.graph.s);
-    let target_wires = boundary_table(&child.graph.t);
-    let call_inputs = operation_inputs(call_graph, call_operation_id).collect::<Vec<_>>();
-    let call_outputs = operation_outputs(call_graph, call_operation_id).collect::<Vec<_>>();
-
-    resolved
-        .projection
-        .iter()
-        .map(|projection| {
-            let projection = (*projection)?;
-            boundary_projection(projection.wire, &source_wires, &call_inputs)
-                .or_else(|| boundary_projection(projection.wire, &target_wires, &call_outputs))
-        })
-        .collect()
 }
 
 fn boundary_projection(

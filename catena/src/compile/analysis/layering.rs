@@ -13,6 +13,7 @@ use crate::{
         graph_ops::{Graph, operation_inputs, operation_outputs},
     },
     lang::Obj,
+    union_find::UnionFind,
 };
 
 // A span from a child graph boundary to its parent graph boundary. The vector
@@ -116,6 +117,19 @@ impl BoundaryRelation {
             *position += 1;
         }
         fiber_points
+    }
+
+    pub(super) fn parent_wires_by_child_wire(&self, wire_count: usize) -> Vec<Option<NodeId>> {
+        let mut parent_wires = vec![None; wire_count];
+        for (child_wire, parent_wire) in self
+            .child_wires
+            .iter()
+            .copied()
+            .zip(self.parent_wires.iter().copied())
+        {
+            parent_wires[child_wire.0] = Some(parent_wire);
+        }
+        parent_wires
     }
 }
 
@@ -237,31 +251,19 @@ pub(super) struct BoundaryFiberPoint {
     pub(super) fiber_position: usize,
 }
 
-pub(super) fn tensor_nested_graphs(nested_graphs: Vec<NestedGraph>) -> NestedGraph {
+pub(super) fn coproduct_over_parent(nested_graphs: Vec<NestedGraph>) -> NestedGraph {
     let mut wires = Vec::<Obj>::new();
     let mut operations = Vec::new();
     let mut source_lengths = Vec::new();
     let mut target_lengths = Vec::new();
     let mut source_values = Vec::new();
     let mut target_values = Vec::new();
-    let mut source_boundary = Vec::new();
-    let mut target_boundary = Vec::new();
     let mut parent_operations = Vec::new();
     let mut boundary_links = Vec::<(BoundaryApex, NodeId, NodeId)>::new();
 
     for nested_graph in nested_graphs {
         let wire_base = wires.len();
         wires.extend(nested_graph.graph.h.w.0.0.iter().cloned());
-        source_boundary.extend(
-            boundary_table(&nested_graph.graph.s)
-                .into_iter()
-                .map(|wire| wire.0 + wire_base),
-        );
-        target_boundary.extend(
-            boundary_table(&nested_graph.graph.t)
-                .into_iter()
-                .map(|wire| wire.0 + wire_base),
-        );
         boundary_links.extend(
             nested_graph
                 .boundary_relation
@@ -288,8 +290,8 @@ pub(super) fn tensor_nested_graphs(nested_graphs: Vec<NestedGraph>) -> NestedGra
 
     let wire_count = wires.len();
     let graph = OpenHypergraph {
-        s: finite_function(source_boundary, wire_count),
-        t: finite_function(target_boundary, wire_count),
+        s: finite_function(Vec::new(), wire_count),
+        t: finite_function(Vec::new(), wire_count),
         h: Hypergraph {
             s: indexed_coproduct(source_lengths, source_values, wire_count),
             t: indexed_coproduct(target_lengths, target_values, wire_count),
@@ -298,7 +300,7 @@ pub(super) fn tensor_nested_graphs(nested_graphs: Vec<NestedGraph>) -> NestedGra
         },
     }
     .validate()
-    .expect("tensor of nested graphs must be valid");
+    .expect("coproduct of nested graphs must be valid");
 
     NestedGraph {
         graph,
@@ -309,6 +311,161 @@ pub(super) fn tensor_nested_graphs(nested_graphs: Vec<NestedGraph>) -> NestedGra
             BoundaryRelation::from_links(boundary_links)
         },
     }
+}
+
+pub(super) fn quotient_over_parent(parent: &Graph, nested_graph: NestedGraph) -> NestedGraph {
+    nested_graph.validate_against_parent(parent);
+
+    let mut wires = Vec::<Obj>::new();
+    let mut operations = Vec::new();
+    let mut source_lengths = Vec::new();
+    let mut target_lengths = Vec::new();
+    let mut source_values = Vec::new();
+    let mut target_values = Vec::new();
+    let mut fiber_point_to_global_wire = HashMap::<BoundaryFiberPoint, usize>::new();
+    let mut global_fiber_points = Vec::<Option<BoundaryFiberPoint>>::new();
+    let mut duplicate_fiber_point_pairs = Vec::<(usize, usize)>::new();
+
+    let nested_fiber_points = nested_graph
+        .boundary_relation
+        .fiber_points_by_wire(nested_graph.graph.h.w.0.len());
+    for (wire, fiber_point) in nested_graph
+        .graph
+        .h
+        .w
+        .0
+        .0
+        .iter()
+        .cloned()
+        .zip(nested_fiber_points.iter().copied())
+    {
+        let global = wires.len();
+        wires.push(match fiber_point {
+            Some(fiber_point) => parent.h.w.0.0[fiber_point.parent_wire.0].clone(),
+            None => wire,
+        });
+        global_fiber_points.push(fiber_point);
+        if let Some(fiber_point) = fiber_point {
+            if let Some(previous) = fiber_point_to_global_wire.get(&fiber_point).copied() {
+                duplicate_fiber_point_pairs.push((previous, global));
+            } else {
+                fiber_point_to_global_wire.insert(fiber_point, global);
+            }
+        }
+    }
+
+    for operation_id in 0..nested_graph.graph.h.x.0.len() {
+        operations.push(nested_graph.graph.h.x.0.0[operation_id].clone());
+        let sources = operation_sources(&nested_graph.graph, operation_id)
+            .into_iter()
+            .map(|wire| wire.0)
+            .collect::<Vec<_>>();
+        let targets = operation_targets(&nested_graph.graph, operation_id)
+            .into_iter()
+            .map(|wire| wire.0)
+            .collect::<Vec<_>>();
+        source_lengths.push(sources.len());
+        target_lengths.push(targets.len());
+        source_values.extend(sources);
+        target_values.extend(targets);
+    }
+
+    let mut uf = UnionFind::new(wires.len());
+    for (left, right) in duplicate_fiber_point_pairs {
+        uf.union(left, right);
+    }
+
+    let (class_by_wire, class_labels) =
+        quotient_classes(&mut uf, &wires, &global_fiber_points, parent);
+    let source_values = source_values
+        .into_iter()
+        .map(|wire| class_by_wire[wire])
+        .collect::<Vec<_>>();
+    let target_values = target_values
+        .into_iter()
+        .map(|wire| class_by_wire[wire])
+        .collect::<Vec<_>>();
+    let wire_count = class_labels.len();
+
+    let graph = OpenHypergraph {
+        s: finite_function(Vec::new(), wire_count),
+        t: finite_function(Vec::new(), wire_count),
+        h: Hypergraph {
+            s: indexed_coproduct(source_lengths, source_values, wire_count),
+            t: indexed_coproduct(target_lengths, target_values, wire_count),
+            w: SemifiniteFunction::new(VecArray(class_labels)),
+            x: SemifiniteFunction::new(VecArray(operations)),
+        },
+    }
+    .validate()
+    .expect("quotient of nested graph must be valid");
+
+    let boundary_relation =
+        quotient_boundary_relation(&nested_graph.boundary_relation, &class_by_wire);
+    let result = NestedGraph {
+        graph,
+        parent_operations: nested_graph.parent_operations,
+        boundary_relation,
+    };
+    result.validate_against_parent(parent);
+    result
+}
+
+fn quotient_boundary_relation(
+    relation: &BoundaryRelation,
+    class_by_wire: &[usize],
+) -> BoundaryRelation {
+    let mut links = Vec::<(BoundaryApex, NodeId, NodeId)>::new();
+    for ((apex, child_wire), parent_wire) in relation
+        .apexes
+        .iter()
+        .copied()
+        .zip(relation.child_wires.iter().copied())
+        .zip(relation.parent_wires.iter().copied())
+    {
+        let child_wire = NodeId(class_by_wire[child_wire.0]);
+        if !links
+            .iter()
+            .any(|link| *link == (apex, child_wire, parent_wire))
+        {
+            links.push((apex, child_wire, parent_wire));
+        }
+    }
+    BoundaryRelation::from_links(links)
+}
+
+fn quotient_classes(
+    uf: &mut UnionFind,
+    wires: &[Obj],
+    fiber_points: &[Option<BoundaryFiberPoint>],
+    parent: &Graph,
+) -> (Vec<usize>, Vec<Obj>) {
+    let mut class_by_root = HashMap::<usize, usize>::new();
+    let mut class_by_wire = vec![0; wires.len()];
+    let mut class_fiber_points = Vec::<Option<BoundaryFiberPoint>>::new();
+    let mut class_labels = Vec::<Obj>::new();
+
+    for wire in 0..wires.len() {
+        let root = uf.find(wire);
+        let class = *class_by_root.entry(root).or_insert_with(|| {
+            let fiber_point = fiber_points[wire];
+            class_fiber_points.push(fiber_point);
+            class_labels.push(match fiber_point {
+                Some(fiber_point) => parent.h.w.0.0[fiber_point.parent_wire.0].clone(),
+                None => wires[wire].clone(),
+            });
+            class_fiber_points.len() - 1
+        });
+        if class_fiber_points[class].is_none()
+            && let Some(fiber_point) = fiber_points[wire]
+        {
+            class_fiber_points[class] = Some(fiber_point);
+            class_labels[class] = parent.h.w.0.0[fiber_point.parent_wire.0].clone();
+        }
+        class_by_wire[wire] = class;
+    }
+
+    (class_by_wire, class_labels)
 }
 
 fn boundary_links<'a>(
@@ -341,10 +498,6 @@ fn related_parent_wire(boundary_index: usize, parent_boundary: &[NodeId]) -> Opt
     } else {
         parent_boundary.get(boundary_index).copied()
     }
-}
-
-fn boundary_table(boundary: &FiniteFunction) -> Vec<NodeId> {
-    boundary.table.0.iter().copied().map(NodeId).collect()
 }
 
 fn operation_sources(graph: &Graph, operation_id: OperationId) -> Vec<NodeId> {

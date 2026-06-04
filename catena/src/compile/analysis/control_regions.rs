@@ -11,6 +11,7 @@ use crate::{
     compile::{
         CompileGraph, CompileTheory,
         analysis::{
+            layering::{BoundaryFiberPoint, BoundaryRelation, NestedGraph, tensor_nested_graphs},
             partition::{OperationId, OperationRegion, RegionKind},
             wires::is_interleaved_control_operation,
         },
@@ -43,69 +44,6 @@ struct ResolvedGraph {
     morphism: ControlRegionMorphism,
 }
 
-#[derive(Debug, Clone)]
-struct NestedControlGraph {
-    parent_operation: OperationId,
-    graph: Graph,
-    boundary_relation: BoundaryRelation,
-}
-
-// A span from expanded control boundary wires to the data-theory call boundary.
-// The vector index is the apex element; `child_wires` and `parent_wires` are
-// the two legs of the span.
-#[derive(Debug, Clone)]
-struct BoundaryRelation {
-    child_wires: Vec<NodeId>,
-    parent_wires: Vec<NodeId>,
-}
-
-impl BoundaryRelation {
-    fn from_boundaries(source: (&[NodeId], &[NodeId]), target: (&[NodeId], &[NodeId])) -> Self {
-        let links = boundary_links(source.0, source.1)
-            .chain(boundary_links(target.0, target.1))
-            .fold(Vec::<(NodeId, NodeId)>::new(), |mut links, link| {
-                if !links
-                    .iter()
-                    .any(|(expanded_wire, _)| *expanded_wire == link.0)
-                {
-                    links.push(link);
-                }
-                links
-            });
-        let (child_wires, parent_wires) = links.into_iter().unzip();
-        Self {
-            child_wires,
-            parent_wires,
-        }
-    }
-
-    fn fiber_points_by_wire(&self, wire_count: usize) -> Vec<Option<BoundaryFiberPoint>> {
-        debug_assert_eq!(self.child_wires.len(), self.parent_wires.len());
-        let mut fiber_positions = HashMap::<NodeId, usize>::new();
-        let mut fiber_points = vec![None; wire_count];
-        for (child_wire, parent_wire) in self
-            .child_wires
-            .iter()
-            .copied()
-            .zip(self.parent_wires.iter().copied())
-        {
-            let position = fiber_positions.entry(parent_wire).or_default();
-            fiber_points[child_wire.0] = Some(BoundaryFiberPoint {
-                parent_wire,
-                fiber_position: *position,
-            });
-            *position += 1;
-        }
-        fiber_points
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-struct BoundaryFiberPoint {
-    parent_wire: NodeId,
-    fiber_position: usize,
-}
-
 pub(super) fn process_control_regions(
     parent: &CompileGraph,
     regions: &[OperationRegion],
@@ -124,15 +62,17 @@ fn expand_control_region(
     region_index: usize,
     region: &OperationRegion,
 ) -> ControlRegionGraph {
-    let nested_graphs = region
-        .operations
-        .iter()
-        .copied()
-        .map(|operation_id| expand_interleaved_control_call(parent, operation_id))
-        .collect::<Vec<_>>();
-    let resolved = quotient_resolved_pieces(
+    let nested_graph = tensor_nested_graphs(
+        region
+            .operations
+            .iter()
+            .copied()
+            .map(|operation_id| expand_interleaved_control_call(parent, operation_id))
+            .collect::<Vec<_>>(),
+    );
+    let resolved = quotient_nested_graph(
         &parent.graph,
-        nested_graphs,
+        nested_graph,
         Vec::new(),
         Vec::new(),
         "control region quotient",
@@ -153,7 +93,7 @@ fn expand_control_region(
 fn expand_interleaved_control_call(
     parent: &CompileGraph,
     operation_id: OperationId,
-) -> NestedControlGraph {
+) -> NestedGraph {
     debug_assert!(is_interleaved_control_operation(
         &parent.graph,
         operation_id
@@ -177,11 +117,7 @@ fn expand_interleaved_control_call(
         (&expanded_target_wires, &call_outputs),
     );
 
-    NestedControlGraph {
-        parent_operation: operation_id,
-        graph: expanded_control_graph,
-        boundary_relation,
-    }
+    NestedGraph::under_parent_operation(operation_id, expanded_control_graph, boundary_relation)
 }
 
 // Expand a native control graph by inlining non-primitive control operations
@@ -229,17 +165,19 @@ fn inline_control_definitions(graph: &CompileGraph) -> Graph {
     )
 }
 
-// Flatten nested control graphs and quotient wires whose boundary-relation
+// Flatten a nested graph and quotient wires whose boundary-relation
 // fiber points agree. The resulting graph keeps a public morphism to target
 // wires by forgetting the fiber position and remembering only the data-theory
 // wire.
-fn quotient_resolved_pieces(
+fn quotient_nested_graph(
     target: &Graph,
-    nested_graphs: Vec<NestedControlGraph>,
+    nested_graph: NestedGraph,
     source_boundary: Vec<NodeId>,
     target_boundary: Vec<NodeId>,
     context: &str,
 ) -> ResolvedGraph {
+    nested_graph.validate_against_parent(target);
+
     let mut wires = Vec::<Obj>::new();
     let mut operations = Vec::new();
     let mut source_lengths = Vec::new();
@@ -261,52 +199,53 @@ fn quotient_resolved_pieces(
         );
     }
 
-    for nested_graph in nested_graphs {
-        let base = wires.len();
-        let nested_fiber_points = nested_graph
-            .boundary_relation
-            .fiber_points_by_wire(nested_graph.graph.h.w.0.len());
-        for (wire, fiber_point) in nested_graph
-            .graph
-            .h
-            .w
-            .0
-            .0
-            .iter()
-            .cloned()
-            .zip(nested_fiber_points.iter().copied())
-        {
-            let global = wires.len();
-            wires.push(match fiber_point {
-                Some(fiber_point) => target.h.w.0.0[fiber_point.parent_wire.0].clone(),
-                None => wire,
-            });
-            global_fiber_points.push(fiber_point);
-            if let Some(fiber_point) = fiber_point {
-                if let Some(previous) = fiber_point_to_global_wire.get(&fiber_point).copied() {
-                    duplicate_fiber_point_pairs.push((previous, global));
-                } else {
-                    fiber_point_to_global_wire.insert(fiber_point, global);
-                }
+    let base = wires.len();
+    let nested_fiber_points = nested_graph.boundary_relation.fiber_points_by_wire(
+        &nested_graph.graph,
+        &nested_graph.parent_operations,
+        target,
+        nested_graph.graph.h.w.0.len(),
+    );
+    for (wire, fiber_point) in nested_graph
+        .graph
+        .h
+        .w
+        .0
+        .0
+        .iter()
+        .cloned()
+        .zip(nested_fiber_points.iter().copied())
+    {
+        let global = wires.len();
+        wires.push(match fiber_point {
+            Some(fiber_point) => target.h.w.0.0[fiber_point.parent_wire.0].clone(),
+            None => wire,
+        });
+        global_fiber_points.push(fiber_point);
+        if let Some(fiber_point) = fiber_point {
+            if let Some(previous) = fiber_point_to_global_wire.get(&fiber_point).copied() {
+                duplicate_fiber_point_pairs.push((previous, global));
+            } else {
+                fiber_point_to_global_wire.insert(fiber_point, global);
             }
         }
+    }
 
-        for operation_id in 0..nested_graph.graph.h.x.0.len() {
-            operations.push(nested_graph.graph.h.x.0.0[operation_id].clone());
-            operation_projection.push(nested_graph.parent_operation);
-            let sources = operation_sources(&nested_graph.graph, operation_id)
-                .into_iter()
-                .map(|wire| base + wire.0)
-                .collect::<Vec<_>>();
-            let targets = operation_targets(&nested_graph.graph, operation_id)
-                .into_iter()
-                .map(|wire| base + wire.0)
-                .collect::<Vec<_>>();
-            source_lengths.push(sources.len());
-            target_lengths.push(targets.len());
-            source_values.extend(sources);
-            target_values.extend(targets);
-        }
+    for operation_id in 0..nested_graph.graph.h.x.0.len() {
+        operations.push(nested_graph.graph.h.x.0.0[operation_id].clone());
+        operation_projection.push(nested_graph.parent_operations[operation_id]);
+        let sources = operation_sources(&nested_graph.graph, operation_id)
+            .into_iter()
+            .map(|wire| base + wire.0)
+            .collect::<Vec<_>>();
+        let targets = operation_targets(&nested_graph.graph, operation_id)
+            .into_iter()
+            .map(|wire| base + wire.0)
+            .collect::<Vec<_>>();
+        source_lengths.push(sources.len());
+        target_lengths.push(targets.len());
+        source_values.extend(sources);
+        target_values.extend(targets);
     }
 
     let mut uf = UnionFind::new(wires.len());
@@ -423,27 +362,6 @@ fn quotient_classes(
     }
 
     (class_by_wire, class_fiber_points, class_labels)
-}
-
-fn related_parent_wire(boundary_index: usize, parent_boundary: &[NodeId]) -> Option<NodeId> {
-    if parent_boundary.len() == 1 {
-        parent_boundary.first().copied()
-    } else {
-        parent_boundary.get(boundary_index).copied()
-    }
-}
-
-fn boundary_links<'a>(
-    child_boundary: &'a [NodeId],
-    parent_boundary: &'a [NodeId],
-) -> impl Iterator<Item = (NodeId, NodeId)> + 'a {
-    child_boundary
-        .iter()
-        .copied()
-        .enumerate()
-        .filter_map(|(index, child_wire)| {
-            related_parent_wire(index, parent_boundary).map(|parent_wire| (child_wire, parent_wire))
-        })
 }
 
 // Look up the child graph that gives the native control definition for an operation. Operations without such a child are treated as primitives.

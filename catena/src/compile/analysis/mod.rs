@@ -1,5 +1,6 @@
 mod boundary;
 mod control_regions;
+mod layering;
 mod partition;
 mod render;
 mod wires;

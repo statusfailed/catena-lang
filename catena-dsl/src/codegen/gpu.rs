@@ -186,6 +186,13 @@ fn render_assignment(
         "bool.or" => render_binary_bool(out, assignment, "||")?,
         "bool.ifc" => render_bool_ifc(out, assignment)?,
         "unit.intro" => {}
+        "ax-mp" | "assert-then" | ":.forget" => {}
+        "assert" => render_assert(out, assignment)?,
+        "u64.zero" => render_u64_zero(out, assignment)?,
+        "u64.gt" => render_u64_gt(out, assignment)?,
+        "mem.cast.u64" => render_mem_cast_u64(out, assignment)?,
+        "ix.zero" => render_ix_zero(out, assignment)?,
+        "ix" => render_ix(out, assignment)?,
         "eval" => render_eval(out, assignment)?,
         "gpu.materialize" => render_materialize_call(out, function, assignment)?,
         op => {
@@ -194,6 +201,87 @@ fn render_assignment(
             ));
         }
     }
+    Ok(())
+}
+
+fn render_assert(out: &mut String, assignment: &GpuAssign) -> Result<(), GpuRenderError> {
+    let [input] = assignment.inputs.as_slice() else {
+        return Err(invalid_inputs(assignment, 1));
+    };
+    let [_proof] = assignment.outputs.as_slice() else {
+        return Err(invalid_outputs(assignment, 1));
+    };
+    out.push_str(&format!("    catena_assert({});\n", value_expr(input)));
+    Ok(())
+}
+
+fn render_u64_zero(out: &mut String, assignment: &GpuAssign) -> Result<(), GpuRenderError> {
+    let [] = assignment.inputs.as_slice() else {
+        return Err(invalid_inputs(assignment, 0));
+    };
+    let [output] = assignment.outputs.as_slice() else {
+        return Err(invalid_outputs(assignment, 1));
+    };
+    out.push_str(&format!("    {} = 0;\n", output.name));
+    Ok(())
+}
+
+fn render_u64_gt(out: &mut String, assignment: &GpuAssign) -> Result<(), GpuRenderError> {
+    let [lhs, rhs] = assignment.inputs.as_slice() else {
+        return Err(invalid_inputs(assignment, 2));
+    };
+    let [flag, _true_witness, _false_witness] = assignment.outputs.as_slice() else {
+        return Err(invalid_outputs(assignment, 3));
+    };
+    out.push_str(&format!(
+        "    {} = {} > {};\n",
+        flag.name,
+        value_expr(lhs),
+        value_expr(rhs)
+    ));
+    Ok(())
+}
+
+fn render_mem_cast_u64(out: &mut String, assignment: &GpuAssign) -> Result<(), GpuRenderError> {
+    let [input] = assignment.inputs.as_slice() else {
+        return Err(invalid_inputs(assignment, 1));
+    };
+    let [len, buffer] = assignment.outputs.as_slice() else {
+        return Err(invalid_outputs(assignment, 2));
+    };
+    out.push_str(&format!(
+        "    {len} = {mem}.len / sizeof(uint64_t);\n    {buf} = (uint64_t *){mem}.data;\n",
+        len = len.name,
+        buf = buffer.name,
+        mem = value_expr(input)
+    ));
+    Ok(())
+}
+
+fn render_ix_zero(out: &mut String, assignment: &GpuAssign) -> Result<(), GpuRenderError> {
+    let [_proof] = assignment.inputs.as_slice() else {
+        return Err(invalid_inputs(assignment, 1));
+    };
+    let [output] = assignment.outputs.as_slice() else {
+        return Err(invalid_outputs(assignment, 1));
+    };
+    out.push_str(&format!("    {} = 0;\n", output.name));
+    Ok(())
+}
+
+fn render_ix(out: &mut String, assignment: &GpuAssign) -> Result<(), GpuRenderError> {
+    let [index, buffer] = assignment.inputs.as_slice() else {
+        return Err(invalid_inputs(assignment, 2));
+    };
+    let [output] = assignment.outputs.as_slice() else {
+        return Err(invalid_outputs(assignment, 1));
+    };
+    out.push_str(&format!(
+        "    {} = {}[{}];\n",
+        output.name,
+        value_expr(buffer),
+        value_expr(index)
+    ));
     Ok(())
 }
 

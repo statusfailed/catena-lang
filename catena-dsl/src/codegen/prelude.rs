@@ -1,5 +1,6 @@
 pub const GPU_PRELUDE: &str = r#"#include <hip/hip_runtime.h>
 #include <stdint.h>
+#include <stdio.h>
 
 typedef uint8_t catena_unit_t;
 typedef uint8_t catena_gpu_state_t;
@@ -22,7 +23,22 @@ typedef struct {
 typedef struct {
     void *data;
     uint64_t len;
+} catena_mem_t;
+
+typedef struct {
+    void *data;
+    uint64_t len;
 } catena_gpu_buf_t;
+
+__host__ __device__ static inline void catena_assert(uint8_t condition) {
+    if (!condition) {
+#ifndef __HIP_DEVICE_COMPILE__
+        fprintf(stderr, "catena assertion failed\n");
+        fflush(stderr);
+#endif
+        __builtin_trap();
+    }
+}
 
 __host__ __device__ static inline uint64_t catena_launch_len(catena_launch_params_t params) {
     return (uint64_t)params.grid_dim.x * params.grid_dim.y * params.grid_dim.z

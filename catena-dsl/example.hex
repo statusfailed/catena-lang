@@ -41,6 +41,16 @@
 (def program id : [a] -> [a] = [x])
 (def program use-id : (bool val) -> (bool val) = id)
 
+# Cast owned memory to a u64 buffer, assert it is non-empty, then read element 0.
+(def program array-head-u64 : ([n.] (cap.own mem)) -> ([n.] (u64 val)) = (
+  mem.cast.u64
+  {
+    (u64.assert-nz ix.zero)
+    [b]
+  }
+  ix
+))
+
 # using 'bool' as a substitute for `Ix n` (bool => n = 2!) we check if we can define pointwise addition!
 # TODO
 #(def program pointwise-add : {

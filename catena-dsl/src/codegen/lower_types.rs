@@ -46,14 +46,30 @@ pub fn lower_type(ty: &Tree<(), Operation>) -> Result<LoweredType, LowerTypeErro
     }
 
     match ty {
+        Tree::Node(op, 0, children) if op.as_str() == ":" => {
+            let [_name, ty] = expect_binary(op.as_str(), children)?;
+            lower_runtime_type(ty).map(LoweredType::Runtime)
+        }
         Tree::Node(op, 0, _children) if op.as_str() == "->" => {
             Err(LowerTypeError::FunctionPointerRuntime)
         }
-        Tree::Node(op, 0, children) if op.as_str() == "gpu.buf" || op.as_str() == "buf" => {
+        Tree::Node(op, 0, children) if op.as_str() == "gpu.buf" => {
             let [element] = expect_unary(op.as_str(), children)?;
             Ok(LoweredType::Runtime(CType::Pointer(Box::new(
                 lower_runtime_type(element)?,
             ))))
+        }
+        Tree::Node(op, 0, children) if op.as_str() == "buf" => {
+            let [_cap, _len, element] = expect_ternary(op.as_str(), children)?;
+            Ok(LoweredType::Runtime(CType::Pointer(Box::new(
+                lower_runtime_type(element)?,
+            ))))
+        }
+        Tree::Node(op, 0, children) if op.as_str() == "mem" => {
+            let [_cap] = expect_unary(op.as_str(), children)?;
+            Ok(LoweredType::Runtime(CType::Named(
+                "catena_mem_t".to_string(),
+            )))
         }
         Tree::Node(op, 0, children) if is_gpu_control_type(op.as_str()) && children.is_empty() => {
             Ok(LoweredType::Runtime(CType::Named(c_name_for_gpu_control(
@@ -74,6 +90,10 @@ pub fn lower_runtime_type(ty: &Tree<(), Operation>) -> Result<CType, LowerTypeEr
     }
 
     match ty {
+        Tree::Node(op, 0, children) if op.as_str() == ":" => {
+            let [_name, ty] = expect_binary(op.as_str(), children)?;
+            lower_runtime_type(ty)
+        }
         Tree::Node(op, 0, children) if op.as_str() == "1" && children.is_empty() => Ok(CType::Unit),
         Tree::Node(op, 0, children) if op.as_str() == "bool" && children.is_empty() => {
             Ok(CType::Bool)
@@ -87,9 +107,21 @@ pub fn lower_runtime_type(ty: &Tree<(), Operation>) -> Result<CType, LowerTypeEr
         Tree::Node(op, 0, _children) if op.as_str() == "->" => {
             Err(LowerTypeError::FunctionPointerRuntime)
         }
-        Tree::Node(op, 0, children) if op.as_str() == "gpu.buf" || op.as_str() == "buf" => {
+        Tree::Node(op, 0, children) if op.as_str() == "gpu.buf" => {
             let [element] = expect_unary(op.as_str(), children)?;
             Ok(CType::Pointer(Box::new(lower_runtime_type(element)?)))
+        }
+        Tree::Node(op, 0, children) if op.as_str() == "buf" => {
+            let [_cap, _len, element] = expect_ternary(op.as_str(), children)?;
+            Ok(CType::Pointer(Box::new(lower_runtime_type(element)?)))
+        }
+        Tree::Node(op, 0, children) if op.as_str() == "mem" => {
+            let [_cap] = expect_unary(op.as_str(), children)?;
+            Ok(CType::Named("catena_mem_t".to_string()))
+        }
+        Tree::Node(op, 0, children) if op.as_str() == "ix" => {
+            let [_extent] = expect_unary(op.as_str(), children)?;
+            Ok(CType::U64)
         }
         Tree::Node(op, 0, children) if is_gpu_control_type(op.as_str()) && children.is_empty() => {
             Ok(CType::Named(c_name_for_gpu_control(op.as_str())))
@@ -150,6 +182,34 @@ fn expect_unary<'a>(
         _ => Err(LowerTypeError::InvalidArity {
             name: name.to_string(),
             expected: 1,
+            actual: children.len(),
+        }),
+    }
+}
+
+fn expect_binary<'a>(
+    name: &str,
+    children: &'a [Tree<(), Operation>],
+) -> Result<[&'a Tree<(), Operation>; 2], LowerTypeError> {
+    match children {
+        [first, second] => Ok([first, second]),
+        _ => Err(LowerTypeError::InvalidArity {
+            name: name.to_string(),
+            expected: 2,
+            actual: children.len(),
+        }),
+    }
+}
+
+fn expect_ternary<'a>(
+    name: &str,
+    children: &'a [Tree<(), Operation>],
+) -> Result<[&'a Tree<(), Operation>; 3], LowerTypeError> {
+    match children {
+        [first, second, third] => Ok([first, second, third]),
+        _ => Err(LowerTypeError::InvalidArity {
+            name: name.to_string(),
+            expected: 3,
             actual: children.len(),
         }),
     }

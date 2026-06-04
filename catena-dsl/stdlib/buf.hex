@@ -26,23 +26,17 @@
   # Casting mem to buf and back
   # TODO: this can lose bytes of mem if sizeof(u64) doesn't cleanly divide num bytes!
   # buf.to-mem : (n : u64) ● val(buf m n t) -> mem m
-  (arr buf.to-mem : ([m n t.]
-      {
-        ({[.n] u64} :)   # n : u64
-        ([.m n t] buf val) # val(buf m n t)
-      }
-      *
-    ) -> ([m n t.m] mem)
+  (arr buf.to-mem : {[m n t.]
+      ({[.n] u64} :)   # n : u64
+      ([.m n t] buf val) # val(buf m n t)
+    } -> ([m n t.m] mem)
   )
 
   # mem.cast.u64 : mem m -> (n : u64) ● val(buf m n u64)
-  (arr mem.cast.u64 : ([m n.m] mem) -> ([m n.]
-    {
-      ({[.n] u64} :)   # n : u64
-      ({[.m n] u64} buf val) # val(buf m n u64)
-    }
-    *
-  ))
+  (arr mem.cast.u64 : ([m n.m] mem) -> {[m n.]
+    ({[.n] u64} :)   # n : u64
+    ({[.m n] u64} buf val) # val(buf m n u64)
+  })
 
   # TODO: make all mem.cast.* into definitions, using the below:
   #   mem.cast : mem ● (s : u64) ● sizeof(t, s) -> (n : u64) ● val(buf n t)

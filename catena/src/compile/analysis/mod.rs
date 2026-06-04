@@ -12,8 +12,8 @@ use crate::compile::{CompileGraph, CompileTheory};
 use self::{
     boundary::BoundaryWires,
     control_regions::process_control_regions,
-    partition::partition_regions,
-    render::{graph_svg, render_region_svgs},
+    partition::{partition_control_regions, partition_data_regions},
+    render::{graph_svg, render_graph_region_svgs, render_region_svgs},
     wires::assert_interleaved_control_operations_are_unary,
 };
 
@@ -40,8 +40,8 @@ pub fn control_region_graphs(graph: &CompileGraph) -> Vec<ControlRegionGraph> {
         "analysis expects a data graph"
     );
     assert_interleaved_control_operations_are_unary(&graph.graph);
-    let regions = partition_regions(&graph.graph);
-    process_control_regions(graph, &regions)
+    let regions = partition_data_regions(&graph.graph);
+    partition_control_region_graphs(process_control_regions(graph, &regions))
 }
 
 pub fn render_analysis_artifacts(graph: &CompileGraph) -> std::io::Result<Vec<AnalysisArtifact>> {
@@ -54,9 +54,10 @@ pub fn render_analysis_artifacts(graph: &CompileGraph) -> std::io::Result<Vec<An
     // better fail early and loud if I am wrong!
     assert_interleaved_control_operations_are_unary(&graph.graph);
     let _boundary_wires = BoundaryWires::from_graph(&graph.graph);
-    let regions = partition_regions(&graph.graph);
+    let regions = partition_data_regions(&graph.graph);
     let region_svgs = render_region_svgs(graph, &regions)?;
-    let control_region_graphs = process_control_regions(graph, &regions);
+    let control_region_graphs =
+        partition_control_region_graphs(process_control_regions(graph, &regions));
     let before_split = graph_svg(&graph.graph)?;
     let mut artifacts = vec![
         AnalysisArtifact {
@@ -78,6 +79,28 @@ pub fn render_analysis_artifacts(graph: &CompileGraph) -> std::io::Result<Vec<An
                 .join(format!("{:03}-resolved.svg", control_region.region_index)),
             contents: graph_svg(&control_region.nested_graph.graph)?,
         });
+        artifacts.extend(
+            render_graph_region_svgs(&control_region.nested_graph.graph, &control_region.regions)?
+                .into_iter()
+                .map(|region| AnalysisArtifact {
+                    path: PathBuf::from("control-regions")
+                        .join(format!("{:03}-regions", control_region.region_index))
+                        .join(region.file_name),
+                    contents: region.svg,
+                }),
+        );
     }
     Ok(artifacts)
+}
+
+fn partition_control_region_graphs(
+    control_region_graphs: Vec<ControlRegionGraph>,
+) -> Vec<ControlRegionGraph> {
+    control_region_graphs
+        .into_iter()
+        .map(|mut control_region| {
+            control_region.regions = partition_control_regions(&control_region.nested_graph.graph);
+            control_region
+        })
+        .collect()
 }

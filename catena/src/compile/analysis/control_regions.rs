@@ -24,6 +24,7 @@ use crate::{
 pub struct ControlRegionGraph {
     pub region_index: usize,
     pub nested_graph: NestedGraph,
+    pub regions: Vec<OperationRegion>,
 }
 
 pub(super) fn process_control_regions(
@@ -57,6 +58,7 @@ fn expand_control_region(
     ControlRegionGraph {
         region_index,
         nested_graph: resolved,
+        regions: Vec::new(),
     }
 }
 

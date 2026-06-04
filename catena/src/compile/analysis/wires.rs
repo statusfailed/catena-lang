@@ -60,6 +60,13 @@ pub(super) fn is_interleaved_control_operation(graph: &Graph, operation_id: Oper
     )
 }
 
+pub(super) fn is_interleaved_data_operation(graph: &Graph, operation_id: OperationId) -> bool {
+    matches!(
+        operation_kind(operation_name(graph, operation_id)),
+        OperationKind::InterleavedData
+    )
+}
+
 pub(super) fn assert_interleaved_control_operations_are_unary(graph: &Graph) {
     for operation_id in operation_ids(graph) {
         if !is_interleaved_control_operation(graph, operation_id) {

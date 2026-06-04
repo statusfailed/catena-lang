@@ -23,17 +23,7 @@ use crate::{
 #[derive(Debug, Clone)]
 pub struct ControlRegionGraph {
     pub region_index: usize,
-    pub region_operations: Vec<OperationId>,
-    pub graph: Graph,
-    pub morphism: ControlRegionMorphism,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ControlRegionMorphism {
-    /// Result wire id -> parent region wire id, when the resolved wire is visible through the original interleaved control region.
-    pub wires: Vec<Option<NodeId>>,
-    /// Result operation id -> parent interleaved control operation id.
-    pub operations: Vec<OperationId>,
+    pub nested_graph: NestedGraph,
 }
 
 pub(super) fn process_control_regions(
@@ -66,14 +56,7 @@ fn expand_control_region(
 
     ControlRegionGraph {
         region_index,
-        region_operations: region.operations.clone(),
-        morphism: ControlRegionMorphism {
-            wires: resolved
-                .boundary_relation
-                .parent_wires_by_child_wire(resolved.graph.h.w.0.len()),
-            operations: resolved.parent_operations.clone(),
-        },
-        graph: resolved.graph,
+        nested_graph: resolved,
     }
 }
 

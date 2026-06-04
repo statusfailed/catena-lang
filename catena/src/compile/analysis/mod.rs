@@ -17,7 +17,8 @@ use self::{
     wires::assert_interleaved_control_operations_are_unary,
 };
 
-pub use control_regions::{ControlRegionGraph, ControlRegionMorphism};
+pub use control_regions::ControlRegionGraph;
+pub use layering::NestedGraph;
 
 pub fn render_analysis(graph: &CompileGraph) -> std::io::Result<Vec<u8>> {
     Ok(render_analysis_artifacts(graph)?
@@ -75,7 +76,7 @@ pub fn render_analysis_artifacts(graph: &CompileGraph) -> std::io::Result<Vec<An
         artifacts.push(AnalysisArtifact {
             path: PathBuf::from("control-regions")
                 .join(format!("{:03}-resolved.svg", control_region.region_index)),
-            contents: graph_svg(&control_region.graph)?,
+            contents: graph_svg(&control_region.nested_graph.graph)?,
         });
     }
     Ok(artifacts)

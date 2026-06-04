@@ -19,7 +19,7 @@ use crate::{
 // A span from a child graph boundary to its parent graph boundary. The vector
 // index is the apex element; `child_wires` and `parent_wires` are the two legs.
 #[derive(Debug, Clone)]
-pub(super) struct BoundaryRelation {
+pub struct BoundaryRelation {
     apexes: Vec<BoundaryApex>,
     pub(super) child_wires: Vec<NodeId>,
     pub(super) parent_wires: Vec<NodeId>,
@@ -118,19 +118,6 @@ impl BoundaryRelation {
         }
         fiber_points
     }
-
-    pub(super) fn parent_wires_by_child_wire(&self, wire_count: usize) -> Vec<Option<NodeId>> {
-        let mut parent_wires = vec![None; wire_count];
-        for (child_wire, parent_wire) in self
-            .child_wires
-            .iter()
-            .copied()
-            .zip(self.parent_wires.iter().copied())
-        {
-            parent_wires[child_wire.0] = Some(parent_wire);
-        }
-        parent_wires
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -153,10 +140,10 @@ struct BoundaryFiber {
 }
 
 #[derive(Debug, Clone)]
-pub(super) struct NestedGraph {
-    pub(super) graph: Graph,
-    pub(super) parent_operations: Vec<OperationId>,
-    pub(super) boundary_relation: BoundaryRelation,
+pub struct NestedGraph {
+    pub graph: Graph,
+    pub parent_operations: Vec<OperationId>,
+    pub boundary_relation: BoundaryRelation,
 }
 
 impl NestedGraph {

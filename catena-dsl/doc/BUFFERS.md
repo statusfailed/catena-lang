@@ -3,7 +3,7 @@
 This document concerns the design of *buffers*, *indices*, and *index spaces* in catena.
 In short:
 
-- *Memory* is untyped, sized (in bytes) regions of memory (in C, pairs of `void*, size_t`)
+- *Memory* is untyped, sized (in bytes) regions of memory (in C, pairs of `void*, size_t`), parameterized by an ownership capability
 - Buffers are contiguous sequences of elements of some type, with dependent-typed size
 - Indices represent *positions* in a buffer
 - Index spaces are the sets representing the *sizes* of buffers and indices
@@ -36,9 +36,19 @@ Thus:
 
 **The main memory types in catena** are therefore:
 
-- `mem`: an owned block of memory, conceptually a pair `(void*, size_t)`
-- `buf n t`: an owned buffer of `n` elements of type `t`. `n` must be a type-level u64 here.
-- `ref n t`: same as `buf`, but merely a read-only reference; can be copied freely but not written to.
+- `cap.own`: the capability for owned memory
+- `cap.ref`: the capability for borrowed/read-only memory
+- `mem c`: an untyped memory block with capability `c`, conceptually a pair `(void*, size_t)`
+- `buf c n t`: a typed buffer with capability `c`, `n` elements, and element type `t`. `n` must be a type-level u64 here.
+
+For readability, we usually use aliases:
+
+- `mem` means `mem cap.own`
+- `mem.ref` means `mem cap.ref`
+- `buf n t` means `buf cap.own n t`
+- `ref n t` means `buf cap.ref n t`
+
+Thus `ref n t` is the read-only/reference form of `buf n t`; it can be copied freely but not written to.
     - Used primarily for passing in model weights
 - `Ix s`: an index: a value of a finite set s
 
@@ -71,13 +81,13 @@ Some ideas:
 
 Actually, what we'll go with is a kind of hybrid approach:
 
-- Add an opaque `mem` type, representing a sized handle to some *owned* memory
+- Add an opaque `mem c` type, representing a sized handle to some memory with capability `c`
 - This is isomorphic to `void* × size_t` (and in fact lowers to it)
     - See [this tweet](https://x.com/ZPostFacto/status/2061537537932636194)
 - `mem` is not encoded as a "fat pointer" (explicit pair), but actually lowers
   to two separate values
 - To recover a dependently typed buf, we have...
-    - `mem -> buf n t ● (n : u64)`
+    - `mem c -> buf c n t ● (n : u64)`
     - Notice that this explicitly links a runtime value `n : u64` with the buffer size.
 - Then we can test `n` explicitly, e.g.
     - `assert-nz : (n : u64) -> |- n > 0`
@@ -95,17 +105,25 @@ This section covers the basic types, and their intended meanings
 
 Catena DSL has the following buffer types:
 
-    buf n t         # an *owned* buffer
-    ref n t         # a read-only reference to a buffer
+    mem c           # untyped memory with capability c
+    buf c n t       # buffer with capability c
 
-each represents a buffer of n elements of type t.
-The GPU backend treats both as *device* buffers.
+with common aliases:
+
+    mem             # mem cap.own
+    mem.ref         # mem cap.ref
+    buf n t         # buf cap.own n t
+    ref n t         # buf cap.ref n t
+
+`buf c n t` represents a buffer of n elements of type t.
+The GPU backend treats buffers as *device* buffers.
 currently there is no host/device distinction at the language level.
 
 Some design notes:
 
-- `buf` cannot be arbitrarily discard, it must be explicitly deallocated. There must be no ops that consume a buf without doing this.
-- `ref` can be freely copied and discarded, but one cannot create a ref (yet)
+- `buf cap.own n t` cannot be arbitrarily discarded; it must be converted back to `mem cap.own` or explicitly deallocated.
+- `buf cap.ref n t` can be freely copied and discarded, but one cannot create a ref (yet)
+- Forgetting element type preserves capability: `buf c n t -> mem c`
 
 ## Indices
 
@@ -142,7 +160,7 @@ Naturally, this does *not* hold in general: some `n` are zero sized!
 
 This is where we need to either branch or `assert`:
 
-    assert : (b : bool) ● (|- b = true => p) -> |- p
+    assert-then : (b : bool) ● (|- b = true ==> p) -> |- p
 
 this lets us conclude `p` from a runtime value.
 When `p` is false, the program stops (partial).
@@ -157,4 +175,3 @@ Using the 'true' branch proposition with `assert` and `b` allows us to construct
 ## Multiplying by identity matrix
 
 (TODO: this example is complicated and incomplete!)
-

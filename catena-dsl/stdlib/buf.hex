@@ -11,10 +11,6 @@
   # `buf m n t` is a buffer with ownership mode m of length n with elements of type t.
   (arr buf : 3 -> 1)
 
-  # Indices
-  # `fin n` represents an index into a finite space n
-  (arr fin  : 1 -> 1)
-
   # Sized types
   # sizeof(t, s) "the representation size of type t is s bytes"
   #(arr sizeof : 2 -> 1)
@@ -23,8 +19,8 @@
 
 (theory program type {
   ################################################################################
-  # deallocating
-  (arr free : mem -> [m.])
+  # owned memory can be deallocated
+  (arr free : (cap.own mem) -> [])
 
   ################################################################################
   # Casting mem to buf and back
@@ -43,7 +39,7 @@
   (arr mem.cast.u64 : ([m n.m] mem) -> ([m n.]
     {
       ({[.n] u64} :)   # n : u64
-      ([.m n t] buf val) # val(buf m n t)
+      ({[.m n] u64} buf val) # val(buf m n u64)
     }
     *
   ))

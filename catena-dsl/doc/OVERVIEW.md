@@ -29,9 +29,17 @@ For example, one can then pass the boolean and first proof to `assert` to obtain
 
 ## Buffers
 
-- `mem` is an owned block of memory; equivalent to `(void*, size_t)` in C
-- `buf n t` is the type of *owned* buffers of `n` elements of type `t`
-- `ref n t` is the type of *references* to buffers of `n` elements of type `t`
+- `cap.own` is the capability for owned memory
+- `cap.ref` is the capability for borrowed/read-only memory
+- `mem c` is an untyped memory block with capability `c`; equivalent to `(void*, size_t)` in C
+- `buf c n t` is the type of buffers with capability `c`, `n` elements, and element type `t`
+
+Common aliases:
+
+- `mem` means `mem cap.own`
+- `mem.ref` means `mem cap.ref`
+- `buf n t` means `buf cap.own n t`
+- `ref n t` means `buf cap.ref n t`
 
 TODO: `n` should probably be enforced to be something that lowers explicitly to `size_t`.
 For example, an `extent` type ~= `u64`, with saturating operations.
@@ -39,7 +47,7 @@ For example, an `extent` type ~= `u64`, with saturating operations.
 ## Borrowing
 
 TODO: ownership, fractional borrowing, etc.
-Owned buffers cannot be discarded (must be explicitly dealloc'd)
+Owned memory/buffers cannot be discarded; `cap.ref` values are borrowed views.
 
 ## Partial Function semantics
 

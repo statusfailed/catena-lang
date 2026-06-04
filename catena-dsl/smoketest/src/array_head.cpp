@@ -12,6 +12,12 @@ int main() {
       11,
   };
 
+  std::cout << "making array with elems:";
+  for (uint64_t value : values) {
+    std::cout << " 0x" << std::hex << value;
+  }
+  std::cout << std::dec << std::endl;
+
   catena_mem_t mem = {
       values.data(),
       values.size() * sizeof(uint64_t),
@@ -20,7 +26,7 @@ int main() {
   uint64_t out = 0;
   program_array_head_u64(mem, &out);
 
-  std::cout << "array_head_u64: " << out << std::endl;
+  std::cout << "array_head_u64: 0x" << std::hex << out << std::dec << std::endl;
 
   if (out != values.front()) {
     std::cerr << "verification: FAILED" << std::endl;

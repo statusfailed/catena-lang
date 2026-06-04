@@ -1,4 +1,3 @@
-mod boundary;
 mod control_regions;
 mod layering;
 mod partition;
@@ -10,7 +9,6 @@ use std::path::PathBuf;
 use crate::compile::{CompileGraph, CompileTheory};
 
 use self::{
-    boundary::BoundaryWires,
     control_regions::process_control_regions,
     partition::{partition_control_regions, partition_data_regions},
     render::{graph_svg, render_graph_region_svgs, render_region_svgs},
@@ -53,7 +51,6 @@ pub fn render_analysis_artifacts(graph: &CompileGraph) -> std::io::Result<Vec<An
     // I don't know if it is too strict, but I cannot imagine a case when it is not true
     // better fail early and loud if I am wrong!
     assert_interleaved_control_operations_are_unary(&graph.graph);
-    let _boundary_wires = BoundaryWires::from_graph(&graph.graph);
     let regions = partition_data_regions(&graph.graph);
     let region_svgs = render_region_svgs(graph, &regions)?;
     let control_region_graphs =

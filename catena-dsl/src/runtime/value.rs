@@ -1,10 +1,11 @@
-use super::executor::{AbiValue, ArgValue};
+use super::executor::{AbiValue, ArgValue, CatenaMem};
 
 /// Public Catena runtime values accepted at program boundaries.
 #[derive(Debug)]
 pub enum Value {
     Bool(u8),
     U64(u64),
+    Mem(CatenaMem),
 }
 
 /// Semantic kinds of public runtime values.
@@ -12,6 +13,7 @@ pub enum Value {
 pub enum ValueKind {
     Bool,
     U64,
+    Mem,
 }
 
 impl Value {
@@ -19,6 +21,7 @@ impl Value {
         match self {
             Value::Bool(_) => ValueKind::Bool,
             Value::U64(_) => ValueKind::U64,
+            Value::Mem(_) => ValueKind::Mem,
         }
     }
 }
@@ -28,6 +31,10 @@ impl Value {
         match kind {
             ValueKind::Bool => Value::Bool(0),
             ValueKind::U64 => Value::U64(0),
+            ValueKind::Mem => Value::Mem(CatenaMem {
+                data: std::ptr::null_mut(),
+                len: 0,
+            }),
         }
     }
 
@@ -35,6 +42,7 @@ impl Value {
         match self {
             Value::Bool(value) => ArgValue::Val(AbiValue::U8(value)),
             Value::U64(value) => ArgValue::Val(AbiValue::U64(value)),
+            Value::Mem(value) => ArgValue::Val(AbiValue::Mem(value)),
         }
     }
 
@@ -42,6 +50,7 @@ impl Value {
         match self {
             Value::Bool(value) => ArgValue::Out(AbiValue::U8(value)),
             Value::U64(value) => ArgValue::Out(AbiValue::U64(value)),
+            Value::Mem(value) => ArgValue::Out(AbiValue::Mem(value)),
         }
     }
 }

@@ -28,7 +28,6 @@ impl Artifact {
     pub(crate) fn path(&self) -> &Path {
         &self.path
     }
-
 }
 
 pub(crate) fn compile(cpp_path: &Path) -> Result<Artifact, ArtifactError> {

@@ -2,6 +2,8 @@ use thiserror::Error;
 
 use std::{collections::HashMap, path::PathBuf};
 
+use libloading::Library;
+
 use super::artifact::{Artifact, ArtifactError};
 use super::executor::{CallFrame, ExecutorError};
 use super::{
@@ -13,7 +15,9 @@ use crate::compile::CompileFailure;
 /// Run catena programs with the C backend
 #[derive(Debug)]
 pub struct Runtime {
-    artifact: Artifact,
+    // Keep the tempdir-backed shared object alive for as long as the library is loaded.
+    _artifact: Artifact,
+    library: Library,
     signatures: HashMap<String, FunctionSignature>,
 }
 
@@ -29,6 +33,8 @@ pub enum InitError {
     DumpReport(#[from] std::io::Error),
     #[error(transparent)]
     Artifact(#[from] ArtifactError),
+    #[error("failed to load compiled shared object: {0}")]
+    LoadLibrary(#[source] libloading::Error),
 }
 
 #[derive(Debug, Error)]
@@ -77,9 +83,11 @@ impl Runtime {
         report.dump_to_dir(report_dir.path())?;
         let cpp_path = report_dir.path().join("gpu/program.cpp");
         let artifact = super::artifact::compile(&cpp_path)?;
+        let library = unsafe { Library::new(artifact.path()) }.map_err(InitError::LoadLibrary)?;
 
         Ok(Self {
-            artifact,
+            _artifact: artifact,
+            library,
             signatures,
         })
     }
@@ -139,7 +147,7 @@ impl Runtime {
         }
 
         super::executor::exec(
-            self.artifact.path(),
+            &self.library,
             &signature.symbol,
             CallFrame {
                 args: &mut frame_args,

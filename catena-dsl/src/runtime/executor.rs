@@ -1,17 +1,24 @@
 //! Execute compiled C backend functions through a small ABI-oriented interface.
 
 use std::ffi::c_void;
-use std::path::Path;
 
 use libffi::middle::{Arg, Cif, CodePtr, Type};
 use libloading::Library;
 use thiserror::Error;
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct CatenaMem {
+    pub data: *mut c_void,
+    pub len: u64,
+}
 
 /// The set of possible types in the image of lowering a valid catena boundary type
 #[derive(Debug)]
 pub enum AbiValue<'a> {
     U8(&'a u8),
     U64(&'a u64),
+    Mem(&'a CatenaMem),
 }
 
 /// Role of an [`AbiValue`] as either input or output
@@ -29,8 +36,6 @@ pub struct CallFrame<'a> {
 
 #[derive(Debug, Error)]
 pub enum ExecutorError {
-    #[error("Failed to load shared object: {0}")]
-    LoadLibrary(#[source] libloading::Error),
     #[error("Failed to resolve symbol '{symbol}': {source}")]
     LoadSymbol {
         symbol: String,
@@ -48,13 +53,10 @@ pub enum ExecutorError {
 ///     - looking up symbols by name
 ///     - computing Vec<Type> from Vec<ArgValue>
 pub(crate) fn exec(
-    so_path: &Path,
+    library: &Library,
     symbol: &str,
     frame: CallFrame<'_>,
 ) -> Result<(), ExecutorError> {
-    // Load shared object
-    let library = unsafe { Library::new(so_path) }.map_err(ExecutorError::LoadLibrary)?;
-
     // Get function symbol by name
     let symbol_name = format!("{symbol}\0");
     let function =
@@ -109,6 +111,7 @@ impl AbiValue<'_> {
         match self {
             AbiValue::U8(_) => Type::u8(),
             AbiValue::U64(_) => Type::u64(),
+            AbiValue::Mem(_) => Type::structure([Type::pointer(), Type::u64()]),
         }
     }
 
@@ -116,6 +119,7 @@ impl AbiValue<'_> {
         match self {
             AbiValue::U8(value) => Arg::new(*value),
             AbiValue::U64(value) => Arg::new(*value),
+            AbiValue::Mem(value) => Arg::new(*value),
         }
     }
 
@@ -123,6 +127,7 @@ impl AbiValue<'_> {
         match self {
             AbiValue::U8(slot) => (*slot as *const u8).cast::<c_void>(),
             AbiValue::U64(slot) => (*slot as *const u64).cast::<c_void>(),
+            AbiValue::Mem(slot) => (*slot as *const CatenaMem).cast::<c_void>(),
         }
     }
 }

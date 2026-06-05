@@ -12,6 +12,9 @@ pub mod executor;
 /// manage and run compiled catena programs
 pub mod runtime;
 
+/// Runtime-call signature metadata
+pub mod signature;
+
 //#[cfg(test)]
 //mod tests;
 

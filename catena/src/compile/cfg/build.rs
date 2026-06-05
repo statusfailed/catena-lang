@@ -14,7 +14,7 @@ use super::{
     monoidal::{MonoidalStructureResolver, MonoidalStructureSubgraph},
     operation::{
         CfgOperationRole, OperationInstance, cfg_operation_role, effective_operation_instance,
-        is_branch_operation, is_control_operation, operation_names,
+        is_branch_operation, is_control_operation, local_operation_name, operation_names,
     },
     wiring::{
         BoundaryWires, cfg_node_from_control_draft, data_transfer, nodes_with_boundary,
@@ -102,6 +102,15 @@ impl<'a> CfgBuilder<'a> {
             .collect::<Result<Vec<_>, CfgError>>()?;
 
         for operation in &self.operation_instances {
+            // Temporary hack: `control.elim2` is a monoidal definition, so it must
+            // remain visible to the monoidal resolver, but expanding it as a CFG
+            // control node breaks branch wiring. Remove this once monoidal
+            // definitions are handled before control expansion.
+            if operation.name.starts_with("control.")
+                && local_operation_name(&operation.name) == "elim2"
+            {
+                continue;
+            }
             if is_control_operation(self.compile_graph, &operation.name) {
                 self.control_operation_ids.push(operation.id);
             } else {

@@ -1,6 +1,6 @@
 //! Erase type-level operations
 
-use crate::lang::{Arr, Obj, is_value};
+use crate::lang::{Arr, Obj};
 use metacat::tree::Tree;
 use open_hypergraphs::lax::{
     OpenHypergraph,
@@ -10,25 +10,91 @@ use open_hypergraphs::lax::{
 #[derive(Clone)]
 pub struct Erase {
     value: Option<&'static str>,
+    recursive: bool,
 }
 
 impl Erase {
     pub fn default_value() -> Self {
-        Self { value: None }
+        Self {
+            value: None,
+            recursive: false,
+        }
     }
 
     pub fn with_value(value: &'static str) -> Self {
-        Self { value: Some(value) }
+        Self {
+            value: Some(value),
+            recursive: true,
+        }
+    }
+
+    pub fn with_value_shallow(value: &'static str) -> Self {
+        Self {
+            value: Some(value),
+            recursive: false,
+        }
     }
 
     fn is_value(&self, o: &Obj) -> bool {
-        match self.value {
-            Some(value) => match o {
-                Tree::Node(label, _, _) => label.to_string() == value,
-                _ => false,
-            },
-            None => is_value(o),
+        let value = self.value.unwrap_or("value");
+        if self.recursive {
+            contains_value(o, value)
+        } else {
+            is_value_marker(o, value)
         }
+    }
+}
+
+fn is_value_marker(o: &Obj, value: &str) -> bool {
+    match o {
+        Tree::Node(label, _, _) => label.to_string() == value,
+        _ => false,
+    }
+}
+
+fn contains_value(o: &Obj, value: &str) -> bool {
+    match o {
+        Tree::Node(label, _, children) => {
+            label.to_string() == value || children.iter().any(|child| contains_value(child, value))
+        }
+        _ => false,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn op(name: &str) -> Arr {
+        name.parse().expect("test operation name is valid")
+    }
+
+    #[test]
+    fn detects_value_marker_recursively() {
+        let object = Tree::Node(
+            op("*"),
+            0,
+            vec![
+                Tree::Node(op("1"), 0, vec![]),
+                Tree::Node(op("val"), 0, vec![Tree::Node(op("f32"), 0, vec![])]),
+            ],
+        );
+
+        assert!(Erase::with_value("val").is_value(&object));
+    }
+
+    #[test]
+    fn shallow_detection_ignores_nested_value_marker() {
+        let object = Tree::Node(
+            op("*"),
+            0,
+            vec![
+                Tree::Node(op("1"), 0, vec![]),
+                Tree::Node(op("val"), 0, vec![Tree::Node(op("f32"), 0, vec![])]),
+            ],
+        );
+
+        assert!(!Erase::with_value_shallow("val").is_value(&object));
     }
 }
 

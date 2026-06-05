@@ -1,7 +1,8 @@
 use std::path::PathBuf;
 
 use catena::compile::{
-    CompilePipeline, CompileRequest, CudaOptions, Emit, OutputFormat, cfg::CfgOptions, compile,
+    CompilePipeline, CompileRequest, CudaOptions, Emit, OutputFormat, analysis, cfg::CfgOptions,
+    compile, normalize_graph,
 };
 use clap::{Parser, Subcommand, ValueEnum};
 
@@ -81,6 +82,7 @@ enum EmitArg {
     Elaborated,
     Checked,
     StructuredIr,
+    Analysis,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
@@ -192,6 +194,21 @@ fn compile_command(
         }
     }
 
+    if emit == EmitArg::Analysis
+        && let Some(output) = output
+    {
+        return analysis_command(
+            paths,
+            theory,
+            entry,
+            format,
+            CudaOptions { static_values },
+            !no_proof,
+            proof,
+            output,
+        );
+    }
+
     let generated = compile(CompileRequest {
         paths,
         emit: emit.into(),
@@ -208,6 +225,52 @@ fn compile_command(
     })?;
 
     write_output(output, &generated)
+}
+
+fn analysis_command(
+    paths: Vec<PathBuf>,
+    theory: Option<String>,
+    entry: Option<String>,
+    format: Option<OutputFormatArg>,
+    cuda_options: CudaOptions,
+    proof_check: bool,
+    proof_paths: Vec<PathBuf>,
+    output: PathBuf,
+) -> anyhow::Result<()> {
+    let request = CompileRequest {
+        paths,
+        emit: Emit::Analysis,
+        theory,
+        entry,
+        format: format.map(Into::into),
+        cuda_options,
+        cfg_options: CfgOptions::default(),
+        proof_check,
+        proof_paths,
+    };
+    if let Some(format) = request.format
+        && format != OutputFormat::Svg
+    {
+        anyhow::bail!("--format {format:?} is not supported when emitting Analysis");
+    }
+
+    let mut pipeline = CompilePipeline::new(request);
+    let compile_graph_request = pipeline.compile_graph_request()?;
+    let checked_elaborated_theory = pipeline.checked_elaborated_theory()?;
+    let compile_graph =
+        CompilePipeline::compile_graph(checked_elaborated_theory, compile_graph_request)?;
+    let graph = normalize_graph(&compile_graph)?;
+    let artifacts = analysis::render_analysis_artifacts(&graph)?;
+
+    std::fs::create_dir_all(&output)?;
+    for artifact in artifacts {
+        let path = output.join(artifact.path);
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::write(path, artifact.contents)?;
+    }
+    Ok(())
 }
 
 fn parse_cuda_static(value: &str) -> Result<(String, u64), String> {
@@ -249,6 +312,7 @@ impl From<EmitArg> for Emit {
             EmitArg::Elaborated => Emit::Elaborated,
             EmitArg::Checked => Emit::Checked,
             EmitArg::StructuredIr => Emit::StructuredIr,
+            EmitArg::Analysis => Emit::Analysis,
         }
     }
 }

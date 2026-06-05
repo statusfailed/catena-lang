@@ -1,8 +1,10 @@
+pub mod analysis;
 pub mod cfg;
 pub mod check_render;
 pub mod config;
 pub mod cuda;
 pub mod graph;
+pub mod graph_ops;
 pub mod graph_render;
 pub mod normalize;
 pub mod pipeline;

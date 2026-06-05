@@ -1,10 +1,3 @@
-pub mod check;
-pub mod codegen;
-pub mod compile;
-pub mod elaborate;
-pub mod pass;
-pub mod report;
-
 use std::path::PathBuf;
 
 use clap::Parser;
@@ -23,7 +16,7 @@ struct Cli {
 fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
     let raw_theories = RawTheorySet::from_files(cli.paths)?;
-    match compile::compile(raw_theories) {
+    match catena_dsl::compile::compile(raw_theories) {
         Ok(report) => {
             report.dump_to_dir(&cli.output_dir)?;
             Ok(())

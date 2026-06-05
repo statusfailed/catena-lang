@@ -113,9 +113,12 @@ dependencies = [
  "catena",
  "clap",
  "hexpr",
+ "libffi",
+ "libloading",
  "metacat",
  "open-hypergraphs",
  "open-hypergraphs-dot",
+ "tempfile",
  "thiserror",
 ]
 

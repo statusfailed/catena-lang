@@ -130,7 +130,7 @@ fn function_signature(function: &GpuFunction) -> Result<String, GpuRenderError> 
     } else {
         "__host__ __device__ "
     };
-    let mut signature = format!("{qualifier}void {}(", function.name);
+    let mut signature = format!("extern \"C\" {qualifier}void {}(", function.name);
     let mut params = Vec::new();
 
     // Sources render as ordinary parameters; targets render as output-pointer parameters.

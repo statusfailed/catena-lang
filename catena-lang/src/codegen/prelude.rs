@@ -1,6 +1,9 @@
 pub const GPU_PRELUDE: &str = r#"#include <hip/hip_runtime.h>
+#include <fenv.h>
 #include <stdint.h>
 #include <stdio.h>
+
+#pragma STDC FENV_ACCESS ON
 
 typedef uint8_t catena_unit_t;
 typedef uint8_t catena_gpu_state_t;
@@ -29,6 +32,12 @@ typedef struct {
     void *data;
     uint64_t len;
 } catena_gpu_buf_t;
+
+__host__ __device__ static inline void catena_set_round_to_nearest(void) {
+#ifndef __HIP_DEVICE_COMPILE__
+    fesetround(FE_TONEAREST);
+#endif
+}
 
 __host__ __device__ static inline void catena_assert(uint8_t condition) {
     if (!condition) {

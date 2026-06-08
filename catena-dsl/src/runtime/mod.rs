@@ -3,11 +3,14 @@
 /// Public API for creating values to pass into generated catena code
 pub mod value;
 
+/// Helpers for creating and freeing Catena memory values on program boundaries
+pub mod mem;
+
 /// Compile generated HIP/C++ to a shared object.
 pub mod artifact;
 
 /// Marshal catena values into the C ABI and invoke compiled symbols
-pub mod executor;
+pub(crate) mod executor;
 
 /// manage and run compiled catena programs
 pub mod runtime;

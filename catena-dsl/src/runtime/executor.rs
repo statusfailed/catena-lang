@@ -8,9 +8,9 @@ use thiserror::Error;
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
-pub struct CatenaMem {
-    pub data: *mut c_void,
-    pub len: u64,
+pub(crate) struct CatenaMem {
+    pub(crate) data: *mut c_void,
+    pub(crate) len: u64,
 }
 
 /// The set of possible types in the image of lowering a valid catena boundary type

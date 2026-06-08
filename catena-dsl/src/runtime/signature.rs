@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use crate::{
-    codegen::{lower_types::CType, GpuModuleMap},
+    codegen::{GpuModuleMap, lower_types::CType},
     runtime::value::ValueKind,
 };
 

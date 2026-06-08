@@ -226,9 +226,8 @@ fn map_lift(source: &[Obj], target: &[Obj]) -> OpenHypergraph<Obj, Arr> {
         panic!("lift should produce one closure output");
     };
 
-    let (fn_domain, fn_codomain) =
-        value_wrapped_function_parts(function_type)
-            .expect("lift source should be value-wrapped function-typed");
+    let (fn_domain, fn_codomain) = value_wrapped_function_parts(function_type)
+        .expect("lift source should be value-wrapped function-typed");
     let (closure_domain, closure_codomain) =
         closure_parts(closure_type).expect("lift target should be closure-typed");
 

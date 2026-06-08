@@ -1,8 +1,8 @@
 mod name_symbols;
 
 use hexpr::{Hexpr, interpret::Error as HexprInterpretError};
-use metacat::theory::{GraphError, RawTheorySet, ast::ExtensionsError};
 use metacat::theory::model::SignatureError;
+use metacat::theory::{GraphError, RawTheorySet, ast::ExtensionsError};
 use thiserror::Error;
 
 const NAT_THEORY: &str = "nat";
@@ -23,14 +23,18 @@ pub enum ElaborateError {
     InvalidGeneratedOperation(String),
     #[error("generated variable name `{0}` is invalid")]
     InvalidGeneratedVariable(String),
-    #[error("failed to interpret source type map for `name.{theory}.{arrow}` from `{map}`: {error}")]
+    #[error(
+        "failed to interpret source type map for `name.{theory}.{arrow}` from `{map}`: {error}"
+    )]
     NameSourceTypeMapInterpretation {
         theory: String,
         arrow: String,
         map: Hexpr,
         error: HexprInterpretError<SignatureError>,
     },
-    #[error("failed to interpret target type map for `name.{theory}.{arrow}` from `{map}`: {error}")]
+    #[error(
+        "failed to interpret target type map for `name.{theory}.{arrow}` from `{map}`: {error}"
+    )]
     NameTargetTypeMapInterpretation {
         theory: String,
         arrow: String,

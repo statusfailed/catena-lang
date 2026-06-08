@@ -2,7 +2,9 @@ use std::collections::BTreeMap;
 
 use hexpr::Operation;
 use metacat::{
-    check::{Error as MetacatCheckError, PartialResult as MetacatPartialResult, check as metacat_check},
+    check::{
+        Error as MetacatCheckError, PartialResult as MetacatPartialResult, check as metacat_check,
+    },
     theory::{Theory, TheoryId, TheorySet},
     tree::Tree,
 };

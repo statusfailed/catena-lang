@@ -220,9 +220,9 @@ fn pretty_type(
     syntax_theory: &Theory,
 ) -> io::Result<String> {
     ty.try_pretty(Some(&|op: &Operation| {
-        syntax_theory.coarity_of(op).ok_or_else(|| {
-            invalid_data(format!("coarity lookup failed for operation `{op}`"))
-        })
+        syntax_theory
+            .coarity_of(op)
+            .ok_or_else(|| invalid_data(format!("coarity lookup failed for operation `{op}`")))
     }))
 }
 

@@ -1,6 +1,7 @@
 use std::{
     ffi::{c_int, c_void},
     path::{Path, PathBuf},
+    sync::Arc,
 };
 
 use libloading::Library;
@@ -22,64 +23,58 @@ pub enum MemError {
     HipStatus(c_int),
 }
 
+/// Mem values represent a fat pointer (ptr + len) which can be passed into a catena program.
 #[derive(Debug)]
 pub struct Mem {
     pub(crate) abi: CatenaMem,
+    hip: Arc<Hip>,
 }
 
 impl Mem {
-    pub fn from_u64_slice(values: &[u64]) -> Result<Self, MemError> {
-        from_u64_slice(values)
+    pub(crate) fn from_u64_slice(hip: Arc<Hip>, values: &[u64]) -> Result<Self, MemError> {
+        let bytes = std::mem::size_of_val(values);
+        let mut ptr = std::ptr::null_mut();
+        if bytes != 0 {
+            hip.malloc_managed(&mut ptr, bytes)?;
+            unsafe {
+                std::ptr::copy_nonoverlapping(values.as_ptr(), ptr.cast::<u64>(), values.len());
+            }
+        }
+        Ok(Mem {
+            abi: CatenaMem {
+                data: ptr,
+                len: bytes as u64,
+            },
+            hip,
+        })
     }
 
-    pub(crate) fn null() -> Self {
+    pub(crate) fn null(hip: Arc<Hip>) -> Self {
         Self {
             abi: CatenaMem {
                 data: std::ptr::null_mut(),
                 len: 0,
             },
+            hip,
         }
     }
-
 }
 
 impl Drop for Mem {
     fn drop(&mut self) {
-        let _ = free_raw(self.abi);
-    }
-}
-
-pub fn from_u64_slice(values: &[u64]) -> Result<Mem, MemError> {
-    let hip = Hip::load()?;
-    let bytes = std::mem::size_of_val(values);
-    let mut ptr = std::ptr::null_mut();
-    if bytes != 0 {
-        hip.malloc_managed(&mut ptr, bytes)?;
-        unsafe {
-            std::ptr::copy_nonoverlapping(values.as_ptr(), ptr.cast::<u64>(), values.len());
+        if !self.abi.data.is_null() {
+            let _ = self.hip.free(self.abi.data);
         }
     }
-    Ok(Mem {
-        abi: CatenaMem {
-            data: ptr,
-            len: bytes as u64,
-        },
-    })
 }
 
-fn free_raw(mem: CatenaMem) -> Result<(), MemError> {
-    if mem.data.is_null() {
-        return Ok(());
-    }
-    Hip::load()?.free(mem.data)
-}
-
-struct Hip {
+#[derive(Debug)]
+pub(crate) struct Hip {
     library: Library,
 }
 
 impl Hip {
-    fn load() -> Result<Self, MemError> {
+    pub(crate) fn load() -> Result<Self, MemError> {
         if let Ok(library) = unsafe { Library::new("libamdhip64.so") } {
             return Ok(Self { library });
         }

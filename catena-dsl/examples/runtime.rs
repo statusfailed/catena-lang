@@ -29,7 +29,7 @@ fn main() -> anyhow::Result<()> {
             .join(", ")
     );
 
-    let input = Value::mem_u64(&values)?;
+    let input = runtime.mem_u64(&values)?;
     let [head] = runtime.exec("program_array_head_u64", [input])?;
     let Value::U64(head) = head else {
         anyhow::bail!("program_array_head_u64 returned non-u64 value: {head:?}");

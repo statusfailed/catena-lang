@@ -28,10 +28,6 @@ impl Value {
         Value::U64(value)
     }
 
-    pub fn mem_u64(values: &[u64]) -> Result<Self, super::mem::MemError> {
-        super::mem::from_u64_slice(values).map(Value::Mem)
-    }
-
     pub(crate) fn kind(&self) -> ValueKind {
         match self {
             Value::Bool(_) => ValueKind::Bool,
@@ -42,14 +38,6 @@ impl Value {
 }
 
 impl Value {
-    pub(crate) fn zeroed(kind: ValueKind) -> Self {
-        match kind {
-            ValueKind::Bool => Value::Bool(0),
-            ValueKind::U64 => Value::U64(0),
-            ValueKind::Mem => Value::Mem(Mem::null()),
-        }
-    }
-
     pub(crate) fn as_input_arg(&self) -> ArgValue<'_> {
         match self {
             Value::Bool(value) => ArgValue::Val(AbiValue::U8(value)),

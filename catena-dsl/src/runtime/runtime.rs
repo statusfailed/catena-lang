@@ -1,11 +1,12 @@
 use thiserror::Error;
 
-use std::{collections::HashMap, path::PathBuf};
+use std::{collections::HashMap, path::PathBuf, sync::Arc};
 
 use libloading::Library;
 
 use super::artifact::{Artifact, ArtifactError};
 use super::executor::{CallFrame, ExecutorError};
+use super::mem::{Hip, Mem, MemError};
 use super::{
     signature::{FunctionSignature, signatures},
     value::{Value, ValueKind},
@@ -17,7 +18,11 @@ use crate::compile::CompileFailure;
 pub struct Runtime {
     // Keep the tempdir-backed shared object alive for as long as the library is loaded.
     _artifact: Artifact,
+    /// The loaded shared object
     library: Library,
+    /// A handle to the loaded hip .so file, which we call for allocating memory
+    hip: Arc<Hip>,
+    /// Function signatures (runtime Rust ↔ C typechecking)
     signatures: HashMap<String, FunctionSignature>,
 }
 
@@ -35,6 +40,8 @@ pub enum InitError {
     Artifact(#[from] ArtifactError),
     #[error("failed to load compiled shared object: {0}")]
     LoadLibrary(#[source] libloading::Error),
+    #[error(transparent)]
+    Mem(#[from] MemError),
 }
 
 #[derive(Debug, Error)]
@@ -84,12 +91,18 @@ impl Runtime {
         let cpp_path = report_dir.path().join("gpu/program.cpp");
         let artifact = super::artifact::compile(&cpp_path)?;
         let library = unsafe { Library::new(artifact.path()) }.map_err(InitError::LoadLibrary)?;
+        let hip = Arc::new(Hip::load()?);
 
         Ok(Self {
             _artifact: artifact,
             library,
+            hip,
             signatures,
         })
+    }
+
+    pub fn mem_u64(&self, values: &[u64]) -> Result<Value, MemError> {
+        Mem::from_u64_slice(self.hip.clone(), values).map(Value::Mem)
     }
 
     /// Run 'fn_name', which must have M arguments, and return its N arguments.
@@ -123,7 +136,7 @@ impl Runtime {
             .outputs
             .iter()
             .copied()
-            .map(Value::zeroed)
+            .map(|kind| self.zeroed_value(kind))
             .collect();
 
         // Construct the `ArgValue`s with which to call the function
@@ -157,5 +170,13 @@ impl Runtime {
         Ok(output_values
             .try_into()
             .expect("output arity already validated"))
+    }
+
+    fn zeroed_value(&self, kind: ValueKind) -> Value {
+        match kind {
+            ValueKind::Bool => Value::Bool(0),
+            ValueKind::U64 => Value::U64(0),
+            ValueKind::Mem => Value::Mem(Mem::null(self.hip.clone())),
+        }
     }
 }

@@ -110,7 +110,6 @@ name = "catena-dsl"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "catena",
  "clap",
  "hexpr",
  "libffi",

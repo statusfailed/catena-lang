@@ -4,7 +4,7 @@ use open_hypergraphs::lax::NodeId;
 
 use crate::{
     compile::{
-        analysis::wires::{
+        cfg::wires::{
             is_interleaved_control_operation, is_interleaved_data_operation, operation_ids,
             operation_wires,
         },
@@ -14,22 +14,22 @@ use crate::{
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct OperationRegion {
-    pub kind: RegionKind,
-    pub operations: Vec<OperationId>,
+pub(super) struct OperationRegion {
+    pub(super) kind: RegionKind,
+    pub(super) operations: Vec<OperationId>,
 }
 
 pub(super) type OperationId = usize;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum RegionKind {
+pub(super) enum RegionKind {
     Data,
     InterleavedControl,
     Control,
     InterleavedData,
 }
 
-pub(super) fn partition_data_regions(graph: &Graph) -> Vec<OperationRegion> {
+pub(super) fn partition_regions(graph: &Graph) -> Vec<OperationRegion> {
     let mut uf = UnionFind::new(operation_count(graph));
     let mut operations_by_wire = HashMap::<NodeId, Vec<OperationId>>::new();
 

@@ -1,7 +1,8 @@
 use std::path::PathBuf;
 
 use catena::compile::{
-    CompilePipeline, CompileRequest, CudaOptions, Emit, OutputFormat, analysis, cfg::CfgOptions,
+    CompilePipeline, CompileRequest, CudaOptions, Emit, OutputFormat,
+    cfg::{self, CfgOptions},
     compile, normalize_graph,
 };
 use clap::{Parser, Subcommand, ValueEnum};
@@ -52,6 +53,10 @@ enum Command {
         #[arg(short, long)]
         output: Option<PathBuf>,
 
+        /// Dump CFG/region/value-equivalence artifacts while emitting CUDA.
+        #[arg(long = "cfg-artifacts")]
+        cfg_artifacts: Option<PathBuf>,
+
         /// Provide a compile-time CUDA size value, e.g. --cuda-static tile_rows=16.
         #[arg(long = "cuda-static", value_parser = parse_cuda_static)]
         cuda_static: Vec<(String, u64)>,
@@ -65,17 +70,11 @@ enum Command {
         proof: Vec<PathBuf>,
 
         /// Keep monoidal-structure operations in CFG output for debugging.
-        #[arg(
-            long = "cfg-keep-monoidal-operations",
-            visible_alias = "analysis-cfg-show-monoidal-operations"
-        )]
+        #[arg(long = "cfg-keep-monoidal-operations")]
         cfg_keep_monoidal_operations: bool,
 
         /// Keep control-flow-only operations in CFG output for debugging.
-        #[arg(
-            long = "cfg-keep-control-flow-operations",
-            visible_alias = "analysis-cfg-show-control-flow-operations"
-        )]
+        #[arg(long = "cfg-keep-control-flow-operations")]
         cfg_keep_control_flow_operations: bool,
     },
 }
@@ -88,7 +87,6 @@ enum EmitArg {
     Elaborated,
     Checked,
     StructuredIr,
-    Analysis,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
@@ -110,6 +108,7 @@ fn main() -> anyhow::Result<()> {
             entry,
             format,
             output,
+            cfg_artifacts,
             cuda_static,
             no_proof,
             proof,
@@ -122,6 +121,7 @@ fn main() -> anyhow::Result<()> {
             entry,
             format,
             output,
+            cfg_artifacts,
             cuda_static,
             no_proof,
             proof,
@@ -187,6 +187,7 @@ fn compile_command(
     entry: Option<String>,
     format: Option<OutputFormatArg>,
     output: Option<PathBuf>,
+    cfg_artifacts: Option<PathBuf>,
     cuda_static: Vec<(String, u64)>,
     no_proof: bool,
     proof: Vec<PathBuf>,
@@ -200,48 +201,48 @@ fn compile_command(
         }
     }
 
-    if emit == EmitArg::Analysis
-        && let Some(output) = output
-    {
-        return analysis_command(
+    if cfg_artifacts.is_some() && emit != EmitArg::Cuda {
+        anyhow::bail!("--cfg-artifacts is only supported when emitting cuda");
+    }
+
+    let cuda_options = CudaOptions { static_values };
+    let cfg_options = CfgOptions {
+        keep_monoidal_operations: cfg_keep_monoidal_operations,
+        keep_control_flow_operations: cfg_keep_control_flow_operations,
+    };
+
+    let generated = compile(CompileRequest {
+        paths: paths.clone(),
+        emit: emit.into(),
+        theory: theory.clone(),
+        entry: entry.clone(),
+        format: format.map(Into::into),
+        cuda_options: cuda_options.clone(),
+        cfg_options,
+        proof_check: !no_proof,
+        proof_paths: proof.clone(),
+    })?;
+
+    if let Some(output) = cfg_artifacts {
+        dump_cfg_artifacts(
             paths,
             theory,
             entry,
-            format,
-            CudaOptions { static_values },
+            cuda_options,
             !no_proof,
             proof,
             output,
-            CfgOptions {
-                keep_monoidal_operations: cfg_keep_monoidal_operations,
-                keep_control_flow_operations: cfg_keep_control_flow_operations,
-            },
-        );
+            cfg_options,
+        )?;
     }
-
-    let generated = compile(CompileRequest {
-        paths,
-        emit: emit.into(),
-        theory,
-        entry,
-        format: format.map(Into::into),
-        cuda_options: CudaOptions { static_values },
-        cfg_options: CfgOptions {
-            keep_monoidal_operations: cfg_keep_monoidal_operations,
-            keep_control_flow_operations: cfg_keep_control_flow_operations,
-        },
-        proof_check: !no_proof,
-        proof_paths: proof,
-    })?;
 
     write_output(output, &generated)
 }
 
-fn analysis_command(
+fn dump_cfg_artifacts(
     paths: Vec<PathBuf>,
     theory: Option<String>,
     entry: Option<String>,
-    format: Option<OutputFormatArg>,
     cuda_options: CudaOptions,
     proof_check: bool,
     proof_paths: Vec<PathBuf>,
@@ -250,20 +251,15 @@ fn analysis_command(
 ) -> anyhow::Result<()> {
     let request = CompileRequest {
         paths,
-        emit: Emit::Analysis,
+        emit: Emit::Cuda,
         theory,
         entry,
-        format: format.map(Into::into),
+        format: Some(OutputFormat::Text),
         cuda_options,
         cfg_options,
         proof_check,
         proof_paths,
     };
-    if let Some(format) = request.format
-        && format != OutputFormat::Svg
-    {
-        anyhow::bail!("--format {format:?} is not supported when emitting Analysis");
-    }
     let cfg_options = request.cfg_options;
 
     let mut pipeline = CompilePipeline::new(request);
@@ -272,7 +268,8 @@ fn analysis_command(
     let compile_graph =
         CompilePipeline::compile_graph(checked_elaborated_theory, compile_graph_request)?;
     let graph = normalize_graph(&compile_graph)?;
-    let artifacts = analysis::render_analysis_artifacts(&graph, cfg_options)?;
+    let cfg_build = cfg::build_cfg(&graph, cfg_options)?;
+    let artifacts = cfg::render_cfg_artifacts(&cfg_build.artifacts)?;
 
     std::fs::create_dir_all(&output)?;
     for artifact in artifacts {
@@ -324,7 +321,6 @@ impl From<EmitArg> for Emit {
             EmitArg::Elaborated => Emit::Elaborated,
             EmitArg::Checked => Emit::Checked,
             EmitArg::StructuredIr => Emit::StructuredIr,
-            EmitArg::Analysis => Emit::Analysis,
         }
     }
 }

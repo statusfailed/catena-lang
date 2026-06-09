@@ -96,7 +96,6 @@ fn render_function_decl(out: &mut String, function: &GpuFunction) -> Result<(), 
 fn render_function(out: &mut String, function: &GpuFunction) -> Result<(), GpuRenderError> {
     out.push_str(&function_signature(function)?);
     out.push_str(" {\n");
-    out.push_str("    catena_set_round_to_nearest();\n");
     let mut declared = function
         .sources
         .iter()

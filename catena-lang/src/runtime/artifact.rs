@@ -41,10 +41,6 @@ pub(crate) fn compile(cpp_path: &Path) -> Result<Artifact, ArtifactError> {
         .arg("-fPIC")
         .arg("-O2")
         .arg("--std=c++17")
-        // The generated host code sets the floating-point rounding mode at runtime.
-        // Tell the compiler that the FP environment is observable, so casts and
-        // arithmetic are not optimized as if the default rounding mode were fixed.
-        .arg("-frounding-math")
         // Keep multiply/add as separately rounded operations. This prevents a
         // future generated `a * b + c` expression from being contracted to FMA.
         .arg("-ffp-contract=off")

@@ -2,7 +2,7 @@
 mod name_symbols;
 
 /// Add a const.u64.{c} for each constant c required
-mod u64_constants;
+mod constants;
 
 use hexpr::{Hexpr, interpret::Error as HexprInterpretError};
 use metacat::theory::model::SignatureError;
@@ -57,7 +57,7 @@ pub enum ElaborateError {
 pub fn elaborate(mut raw: RawTheorySet) -> Result<RawTheorySet, ElaborateError> {
     raw = raw.with_extensions()?;
     check_reserved_operation_prefixes(&raw)?;
-    u64_constants::elaborate(&mut raw)?;
+    constants::elaborate(&mut raw)?;
 
     let theory_names: Vec<_> = raw
         .theories

@@ -7,6 +7,7 @@ use super::{
 #[derive(Debug)]
 pub enum Value {
     Bool(u8),
+    U32(u32),
     U64(u64),
     Mem(Mem),
 }
@@ -15,6 +16,7 @@ pub enum Value {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ValueKind {
     Bool,
+    U32,
     U64,
     Mem,
 }
@@ -28,9 +30,14 @@ impl Value {
         Value::U64(value)
     }
 
+    pub fn u32(value: u32) -> Self {
+        Value::U32(value)
+    }
+
     pub(crate) fn kind(&self) -> ValueKind {
         match self {
             Value::Bool(_) => ValueKind::Bool,
+            Value::U32(_) => ValueKind::U32,
             Value::U64(_) => ValueKind::U64,
             Value::Mem(_) => ValueKind::Mem,
         }
@@ -41,6 +48,7 @@ impl Value {
     pub(crate) fn as_input_arg(&self) -> ArgValue<'_> {
         match self {
             Value::Bool(value) => ArgValue::Val(AbiValue::U8(value)),
+            Value::U32(value) => ArgValue::Val(AbiValue::U32(value)),
             Value::U64(value) => ArgValue::Val(AbiValue::U64(value)),
             Value::Mem(value) => ArgValue::Val(AbiValue::Mem(&value.abi)),
         }
@@ -49,6 +57,7 @@ impl Value {
     pub(crate) fn as_output_arg(&mut self) -> ArgValue<'_> {
         match self {
             Value::Bool(value) => ArgValue::Out(AbiValue::U8(value)),
+            Value::U32(value) => ArgValue::Out(AbiValue::U32(value)),
             Value::U64(value) => ArgValue::Out(AbiValue::U64(value)),
             Value::Mem(value) => ArgValue::Out(AbiValue::Mem(&mut value.abi)),
         }
@@ -64,5 +73,11 @@ impl From<bool> for Value {
 impl From<u64> for Value {
     fn from(value: u64) -> Self {
         Value::u64(value)
+    }
+}
+
+impl From<u32> for Value {
+    fn from(value: u32) -> Self {
+        Value::u32(value)
     }
 }

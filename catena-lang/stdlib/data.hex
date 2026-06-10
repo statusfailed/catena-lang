@@ -9,6 +9,7 @@
   (arr bool.f : 0 -> 1)
 
   (arr u64 : 0 -> 1)
+  (arr u32 : 0 -> 1)
 })
 
 (theory program type {

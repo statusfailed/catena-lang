@@ -195,6 +195,7 @@ impl Runtime {
     fn zeroed_value(&self, kind: ValueKind) -> Value {
         match kind {
             ValueKind::Bool => Value::Bool(0),
+            ValueKind::U32 => Value::U32(0),
             ValueKind::U64 => Value::U64(0),
             ValueKind::Mem => Value::Mem(Mem::null(self.hip.clone())),
         }

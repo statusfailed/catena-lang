@@ -1,11 +1,12 @@
 use thiserror::Error;
 
 use std::{
-    path::PathBuf,
-    sync::{Arc, Mutex},
+    path::{Path, PathBuf},
+    sync::Arc,
 };
 
 use libloading::Library;
+use libloading::os::unix::{Library as UnixLibrary, RTLD_LAZY, RTLD_LOCAL};
 
 use super::artifact::{Artifact, ArtifactError};
 use super::executor::{CallFrame, ExecutorError};
@@ -16,16 +17,6 @@ use super::{
 };
 use crate::compile::CompileFailure;
 use metacat::theory::RawTheorySet;
-
-// artifact loading lock
-// prevents crashes when loading shared objects in parallel
-// problem: when loading a .so created by catena, some initialization code happens in an upstream
-// Hip library. This calls a process-global LLVM function, and LLVM can crash with an error like:
-//
-//      LLVM ERROR: inconsistency in registered CommandLine options
-//
-// This lock makes sure only one .so is loaded at a time.
-static LOAD_LOCK: Mutex<()> = Mutex::new(());
 
 /// Run catena programs with the C backend
 #[derive(Debug)]
@@ -120,11 +111,7 @@ impl Runtime {
         let cpp_path = report_dir.path().join("gpu/program.cpp");
         let artifact = super::artifact::compile(&cpp_path)?;
 
-        // Safely load .so
-        let library = {
-            let _load_lock = LOAD_LOCK.lock().unwrap_or_else(|err| err.into_inner());
-            unsafe { Library::new(artifact.path()) }.map_err(InitError::LoadLibrary)?
-        };
+        let library = load_generated_library(artifact.path()).map_err(InitError::LoadLibrary)?;
         let hip = Arc::new(Hip::load()?);
 
         Ok(Self {
@@ -232,4 +219,15 @@ impl Runtime {
             ValueKind::Mem => Value::Mem(Mem::null(self.hip.clone())),
         }
     }
+}
+
+fn load_generated_library(path: &Path) -> Result<Library, libloading::Error> {
+    // Generated HIP shared objects must remain resident for the process lifetime.
+    // If one is unloaded and a generated HIP object is loaded again later, ROCm/LLVM
+    // initialization can re-register process-global LLVM command-line options and
+    // abort with "Option 'ubsan-guard-checks' registered more than once".
+    // RTLD_NODELETE lets the Rust handle be dropped while preventing that unload.
+    let flags = RTLD_LAZY | RTLD_LOCAL | libc::RTLD_NODELETE;
+    let library = unsafe { UnixLibrary::open(Some(path), flags) }?;
+    Ok(library.into())
 }

@@ -3,7 +3,7 @@ use std::{
     process::{Command, ExitStatus},
 };
 
-use libloading::Library;
+use libloading::os::unix::{Library, RTLD_LAZY, RTLD_LOCAL};
 
 const HIP_SOURCE: &str = r#"
 #include <hip/hip_runtime.h>
@@ -12,6 +12,7 @@ __global__ void repro_kernel() {}
 "#;
 
 fn main() -> anyhow::Result<()> {
+    let reproduce_crash = std::env::args().any(|arg| arg == "--repro");
     let dir = tempfile::Builder::new()
         .prefix("catena-llvm-repro-")
         .tempdir()?;
@@ -21,16 +22,32 @@ fn main() -> anyhow::Result<()> {
     std::fs::write(&cpp_path, HIP_SOURCE)?;
     compile_shared_object(&cpp_path, &so_path)?;
 
+    if reproduce_crash {
+        eprintln!("repro: using normal dlopen/dlclose; this should crash on the second load");
+    } else {
+        eprintln!("repro: using RTLD_NODELETE; this should survive the second load");
+        eprintln!("repro: pass --repro to run the crashing path");
+    }
+
     eprintln!("repro: load generated HIP shared object");
-    let library = unsafe { Library::new(&so_path) }?;
+    let library = load_library(&so_path, reproduce_crash)?;
     eprintln!("repro: drop generated HIP shared object");
     drop(library);
 
     eprintln!("repro: load generated HIP shared object again");
-    let _library = unsafe { Library::new(&so_path) }?;
+    let _library = load_library(&so_path, reproduce_crash)?;
 
     eprintln!("repro: second load succeeded");
     Ok(())
+}
+
+fn load_library(path: &Path, reproduce_crash: bool) -> Result<Library, libloading::Error> {
+    let flags = if reproduce_crash {
+        RTLD_LAZY | RTLD_LOCAL
+    } else {
+        RTLD_LAZY | RTLD_LOCAL | libc::RTLD_NODELETE
+    };
+    unsafe { Library::open(Some(path), flags) }
 }
 
 fn compile_shared_object(cpp_path: &Path, so_path: &Path) -> anyhow::Result<()> {

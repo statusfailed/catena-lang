@@ -21,6 +21,16 @@ fn main() -> anyhow::Result<()> {
     let [result] = runtime.exec("not", [false.into()])?;
     println!("not(false): {result:?}");
 
+    let [two_times_two] = runtime.exec("two-times-two", [])?;
+    let Value::U64(two_times_two) = two_times_two else {
+        anyhow::bail!("two-times-two returned non-u64 value: {two_times_two:?}");
+    };
+    println!("two-times-two: {two_times_two}");
+    anyhow::ensure!(
+        two_times_two == 4,
+        "two-times-two mismatch: got {two_times_two}, expected 4"
+    );
+
     // Input values for `array-head-u64`
     let values = [0x123456789abcdef0_u64, 7, 11];
     println!(

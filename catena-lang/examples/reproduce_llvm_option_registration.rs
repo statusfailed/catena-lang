@@ -9,10 +9,6 @@ const HIP_SOURCE: &str = r#"
 #include <hip/hip_runtime.h>
 
 __global__ void repro_kernel() {}
-
-extern "C" void repro_entry() {
-    repro_kernel<<<1, 1>>>();
-}
 "#;
 
 fn main() -> anyhow::Result<()> {

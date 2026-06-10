@@ -1,6 +1,9 @@
 use thiserror::Error;
 
-use std::{path::PathBuf, sync::Arc};
+use std::{
+    path::PathBuf,
+    sync::{Arc, Mutex},
+};
 
 use libloading::Library;
 
@@ -13,6 +16,16 @@ use super::{
 };
 use crate::compile::CompileFailure;
 use metacat::theory::RawTheorySet;
+
+// artifact loading lock
+// prevents crashes when loading shared objects in parallel
+// problem: when loading a .so created by catena, some initialization code happens in an upstream
+// Hip library. This calls a process-global LLVM function, and LLVM can crash with an error like:
+//
+//      LLVM ERROR: inconsistency in registered CommandLine options
+//
+// This lock makes sure only one .so is loaded at a time.
+static LOAD_LOCK: Mutex<()> = Mutex::new(());
 
 /// Run catena programs with the C backend
 #[derive(Debug)]
@@ -106,7 +119,12 @@ impl Runtime {
         report.dump_to_dir(report_dir.path())?;
         let cpp_path = report_dir.path().join("gpu/program.cpp");
         let artifact = super::artifact::compile(&cpp_path)?;
-        let library = unsafe { Library::new(artifact.path()) }.map_err(InitError::LoadLibrary)?;
+
+        // Safely load .so
+        let library = {
+            let _load_lock = LOAD_LOCK.lock().unwrap_or_else(|err| err.into_inner());
+            unsafe { Library::new(artifact.path()) }.map_err(InitError::LoadLibrary)?
+        };
         let hip = Arc::new(Hip::load()?);
 
         Ok(Self {

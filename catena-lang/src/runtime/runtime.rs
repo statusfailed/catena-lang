@@ -1,6 +1,7 @@
 use thiserror::Error;
 
 use std::{
+    fs,
     path::{Path, PathBuf},
     sync::Arc,
 };
@@ -10,11 +11,12 @@ use libloading::os::unix::{Library as UnixLibrary, RTLD_LAZY, RTLD_LOCAL};
 
 use super::artifact::{Artifact, ArtifactError};
 use super::executor::{CallFrame, ExecutorError};
-use super::mem::{Hip, Mem, MemError};
+use super::mem::{GpuRuntime, Mem, MemError};
 use super::{
     signature::{SignatureTable, signatures},
     value::{Value, ValueKind},
 };
+use crate::codegen::{GpuDialect, gpu::GpuRenderError, gpu::render_modules};
 use crate::compile::CompileFailure;
 use metacat::theory::RawTheorySet;
 
@@ -25,8 +27,8 @@ pub struct Runtime {
     _artifact: Artifact,
     /// The loaded shared object
     library: Library,
-    /// A handle to the loaded hip .so file, which we call for allocating memory
-    hip: Arc<Hip>,
+    /// A handle to the loaded GPU runtime library, which we call for allocating memory.
+    gpu: Arc<GpuRuntime>,
     /// Function signatures (runtime Rust ↔ C typechecking)
     signatures: SignatureTable,
 }
@@ -39,12 +41,32 @@ pub enum InitError {
     Compile(#[from] CompileFailure),
     #[error("compile report did not contain GPU modules")]
     MissingGpuModules,
-    #[error("failed to write generated report files: {0}")]
-    DumpReport(#[from] std::io::Error),
+    #[error("failed to render generated {dialect:?} source: {source}")]
+    RenderGpu {
+        dialect: GpuDialect,
+        #[source]
+        source: GpuRenderError,
+    },
+    #[error("failed to write generated GPU source to {path}: {source}")]
+    WriteGeneratedSource {
+        path: PathBuf,
+        #[source]
+        source: std::io::Error,
+    },
+    #[error("failed to create generated GPU build directory {path}: {source}")]
+    CreateBuildDir {
+        path: PathBuf,
+        #[source]
+        source: std::io::Error,
+    },
     #[error(transparent)]
     Artifact(#[from] ArtifactError),
-    #[error("failed to load compiled shared object: {0}")]
-    LoadLibrary(#[source] libloading::Error),
+    #[error("failed to load compiled shared object {path}: {source}")]
+    LoadLibrary {
+        path: PathBuf,
+        #[source]
+        source: libloading::Error,
+    },
     #[error(transparent)]
     Mem(#[from] MemError),
 }
@@ -79,24 +101,27 @@ pub enum ExecError {
 
 impl Runtime {
     /// Construct a new runtime from a list of paths, interpreted as catena programs (&stdlib)
-    pub fn new<I>(paths: I) -> Result<Runtime, InitError>
+    pub fn new<I>(paths: I, dialect: GpuDialect) -> Result<Runtime, InitError>
     where
         I: IntoIterator<Item = PathBuf>,
     {
         let raw_theories = metacat::theory::RawTheorySet::from_files(paths)?;
-        Self::from_raw_theories(raw_theories)
+        Self::from_raw_theories(raw_theories, dialect)
     }
 
     /// Construct a new runtime from in-memory Catena source strings.
-    pub fn from_sources<'a, I>(sources: I) -> Result<Runtime, InitError>
+    pub fn from_sources<'a, I>(sources: I, dialect: GpuDialect) -> Result<Runtime, InitError>
     where
         I: IntoIterator<Item = &'a str>,
     {
         let raw_theories = RawTheorySet::from_texts(sources)?;
-        Self::from_raw_theories(raw_theories)
+        Self::from_raw_theories(raw_theories, dialect)
     }
 
-    fn from_raw_theories(raw_theories: RawTheorySet) -> Result<Runtime, InitError> {
+    fn from_raw_theories(
+        raw_theories: RawTheorySet,
+        dialect: GpuDialect,
+    ) -> Result<Runtime, InitError> {
         let report = crate::compile::compile(raw_theories)?;
         let modules = report
             .gpu_modules
@@ -106,18 +131,27 @@ impl Runtime {
 
         let report_dir = tempfile::Builder::new()
             .prefix("catena-report-")
-            .tempdir()?;
-        report.dump_to_dir(report_dir.path())?;
-        let cpp_path = report_dir.path().join("gpu/hip.cpp");
-        let artifact = super::artifact::compile(&cpp_path)?;
+            .tempdir()
+            .map_err(|source| InitError::CreateBuildDir {
+                path: std::env::temp_dir(),
+                source,
+            })?;
+        let cpp_path = report_dir.path().join("module.cpp");
+        let rendered = render_modules(modules, dialect)
+            .map_err(|source| InitError::RenderGpu { dialect, source })?;
+        fs::write(&cpp_path, rendered).map_err(|source| InitError::WriteGeneratedSource {
+            path: cpp_path.clone(),
+            source,
+        })?;
+        let artifact = super::artifact::compile(&cpp_path, dialect)?;
 
-        let library = load_generated_library(artifact.path()).map_err(InitError::LoadLibrary)?;
-        let hip = Arc::new(Hip::load()?);
+        let library = load_generated_library(artifact.path())?;
+        let gpu = Arc::new(GpuRuntime::load(dialect)?);
 
         Ok(Self {
             _artifact: artifact,
             library,
-            hip,
+            gpu,
             signatures: signature_table,
         })
     }
@@ -128,7 +162,7 @@ impl Runtime {
     }
 
     pub fn mem_u64(&self, values: &[u64]) -> Result<Value, MemError> {
-        Mem::from_u64_slice(self.hip.clone(), values).map(Value::Mem)
+        Mem::from_u64_slice(self.gpu.clone(), values).map(Value::Mem)
     }
 
     /// Run a source-level `program` definition, which must have M arguments, and return its N arguments.
@@ -217,18 +251,23 @@ impl Runtime {
             ValueKind::U32 => Value::U32(0),
             ValueKind::U64 => Value::U64(0),
             ValueKind::F32 => Value::F32(0.0),
-            ValueKind::Mem => Value::Mem(Mem::null(self.hip.clone())),
+            ValueKind::Mem => Value::Mem(Mem::null(self.gpu.clone())),
         }
     }
 }
 
-fn load_generated_library(path: &Path) -> Result<Library, libloading::Error> {
-    // Generated HIP shared objects must remain resident for the process lifetime.
-    // If one is unloaded and a generated HIP object is loaded again later, ROCm/LLVM
+fn load_generated_library(path: &Path) -> Result<Library, InitError> {
+    // Generated GPU shared objects must remain resident for the process lifetime.
+    // If one is unloaded and a generated GPU object is loaded again later, ROCm/LLVM
     // initialization can re-register process-global LLVM command-line options and
     // abort with "Option 'ubsan-guard-checks' registered more than once".
     // RTLD_NODELETE lets the Rust handle be dropped while preventing that unload.
     let flags = RTLD_LAZY | RTLD_LOCAL | libc::RTLD_NODELETE;
-    let library = unsafe { UnixLibrary::open(Some(path), flags) }?;
+    let library = unsafe { UnixLibrary::open(Some(path), flags) }.map_err(|source| {
+        InitError::LoadLibrary {
+            path: path.to_path_buf(),
+            source,
+        }
+    })?;
     Ok(library.into())
 }

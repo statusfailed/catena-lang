@@ -1,3 +1,4 @@
+mod elaboration;
 mod gpu;
 mod svg;
 
@@ -51,9 +52,7 @@ impl CompileReport {
             dir.join("raw_theories.hex"),
             self.raw_theories.to_hexpr_text(),
         )?;
-        if let Some(elaborated) = &self.elaborated {
-            fs::write(dir.join("elaborated.hex"), elaborated.to_hexpr_text())?;
-        }
+        elaboration::dump_elaboration(self, dir)?;
         svg::dump_svgs(self, &dir.join("svgs"))?;
         gpu::dump_gpu(self, &dir.join("gpu"))?;
         Ok(())

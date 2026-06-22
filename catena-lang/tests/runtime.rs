@@ -572,6 +572,9 @@ fn exp_approx_test() -> anyhow::Result<()> {
     Ok(())
 }
 
+#[path = "cases/materializec.rs"]
+mod materializec;
+
 #[test]
 fn sigmoid_test() -> anyhow::Result<()> {
     let runtime = runtime_with(NN_EXAMPLES)?;

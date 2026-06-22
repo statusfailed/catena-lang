@@ -1,32 +1,19 @@
 use catena_lang::{
     codegen::GpuDialect,
     runtime::{Runtime, Value},
+    stdlib,
 };
 
 const GPU_DIALECT_ENV: &str = "CATENA_GPU_DIALECT";
 
-const STDLIB: &[&str] = &[
-    include_str!("../stdlib/cmc.hex"),
-    include_str!("../stdlib/value.hex"),
-    include_str!("../stdlib/buf.hex"),
-    include_str!("../stdlib/index.hex"),
-    include_str!("../stdlib/data.hex"),
-    include_str!("../stdlib/fn.hex"),
-    include_str!("../stdlib/combinators.hex"),
-    include_str!("../stdlib/product.hex"),
-    include_str!("../stdlib/gpu.hex"),
-];
 const SIN_EXAMPLES: &str = include_str!("../examples/sincos.hex");
 const NN_EXAMPLES: &str = include_str!("../examples/nn.hex");
 const CLOSURE_EXAMPLES: &str = include_str!("../examples/closure.hex");
 
 /// Create a runtime with a provided user source file
 fn runtime_with(source: &'static str) -> anyhow::Result<Runtime> {
-    Runtime::from_sources(
-        STDLIB.iter().copied().chain([source]),
-        configured_gpu_dialect()?,
-    )
-    .map_err(Into::into)
+    Runtime::from_sources(stdlib::sources().chain([source]), configured_gpu_dialect()?)
+        .map_err(Into::into)
 }
 
 fn configured_gpu_dialect() -> anyhow::Result<GpuDialect> {

@@ -6,3 +6,4 @@ pub mod nonstrict;
 pub mod pass;
 pub mod report;
 pub mod runtime;
+pub mod stdlib;

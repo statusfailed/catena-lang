@@ -7,6 +7,7 @@ use crate::codegen::{
     GpuAssign, GpuDialect, GpuFunction, GpuModule, GpuModuleMap, GpuValue, GpuVar,
     lower_types::CType,
     ops::materializec,
+    ops::reducec,
     prelude::render_gpu_prelude,
     render_utils::{c_type, invalid_inputs, invalid_outputs, param_decl, sanitize_ident},
     runtime_type,
@@ -36,6 +37,18 @@ pub enum GpuRenderError {
     MissingMaterializeLaunchParams,
     #[error("gpu.materialize is missing function input")]
     MissingMaterializeFunction,
+    #[error(
+        "reducec flat ABI parser expected exactly two function symbol inputs, found {actual}; function-valued reducec environments are not supported yet"
+    )]
+    InvalidReducecFunctionCount { actual: usize },
+    #[error("reducec is missing zero input")]
+    MissingReducecZero,
+    #[error("reducec zero input is erased")]
+    ErasedReducecZero,
+    #[error(
+        "reducec expected exactly one runtime length input after the producer function, found {actual}"
+    )]
+    InvalidReducecLengthCount { actual: usize },
     #[error("materializec is missing function input")]
     MissingMaterializecFunction,
     #[error("materializec is missing length input")]
@@ -260,8 +273,10 @@ fn render_assignment(
         "u32.not" => render_unary_prefix(out, assignment, "~")?,
         "u32.to-f32" => render_u32_cast_to_f32(out, assignment)?,
         "u32.bitcast-f32" => render_u32_bitcast_f32(out, assignment)?,
+        "u64.eq" => render_u64_eq(out, assignment)?,
         "u64.gt" => render_u64_gt(out, assignment)?,
         "mem.cast.u64" => render_mem_cast_u64(out, assignment)?,
+        "buf.u64.cast-same-length" => render_buf_u64_cast_same_length(out, assignment)?,
         "buf.to-mem" => render_buf_to_mem(out, assignment)?,
         "f32.one" => render_f32_one(out, assignment)?,
         "f32.add" => render_binary(out, assignment, "+")?,
@@ -284,6 +299,7 @@ fn render_assignment(
         "ix.zero" => render_ix_zero(out, assignment)?,
         "ix" => render_ix(out, assignment)?,
         "eval" => render_eval(out, assignment)?,
+        "reducec" => reducec::render(out, assignment)?,
         "gpu.materialize" => render_materialize_call(out, function, assignment, dialect)?,
         "materializec" => materializec::render_call(out, function, assignment, dialect)?,
         op if op.starts_with("const.u64.") => {
@@ -531,6 +547,22 @@ fn render_u64_gt(out: &mut String, assignment: &GpuAssign) -> Result<(), GpuRend
     Ok(())
 }
 
+fn render_u64_eq(out: &mut String, assignment: &GpuAssign) -> Result<(), GpuRenderError> {
+    let [lhs, rhs] = assignment.inputs.as_slice() else {
+        return Err(invalid_inputs(assignment, 2));
+    };
+    let [flag, _true_witness, _false_witness] = assignment.outputs.as_slice() else {
+        return Err(invalid_outputs(assignment, 3));
+    };
+    out.push_str(&format!(
+        "    {} = {} == {};\n",
+        flag.name,
+        value_expr(lhs),
+        value_expr(rhs)
+    ));
+    Ok(())
+}
+
 fn render_mem_cast_u64(out: &mut String, assignment: &GpuAssign) -> Result<(), GpuRenderError> {
     let [input] = assignment.inputs.as_slice() else {
         return Err(invalid_inputs(assignment, 1));
@@ -544,6 +576,20 @@ fn render_mem_cast_u64(out: &mut String, assignment: &GpuAssign) -> Result<(), G
         buf = buffer.name,
         mem = value_expr(input)
     ));
+    Ok(())
+}
+
+fn render_buf_u64_cast_same_length(
+    out: &mut String,
+    assignment: &GpuAssign,
+) -> Result<(), GpuRenderError> {
+    let [buffer, _same_length] = assignment.inputs.as_slice() else {
+        return Err(invalid_inputs(assignment, 2));
+    };
+    let [output] = assignment.outputs.as_slice() else {
+        return Err(invalid_outputs(assignment, 1));
+    };
+    out.push_str(&format!("    {} = {};\n", output.name, value_expr(buffer)));
     Ok(())
 }
 

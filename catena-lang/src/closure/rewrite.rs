@@ -293,10 +293,7 @@ mod tests {
         let error =
             rewrite_region(&definition, &region, &replacement).expect_err("rewrite should fail");
 
-        assert!(matches!(
-            error,
-            RewriteRegionError::NonMonogamousDefinition
-        ));
+        assert!(matches!(error, RewriteRegionError::NonMonogamousDefinition));
     }
 
     fn obj(name: &str, children: Vec<Obj>) -> Obj {

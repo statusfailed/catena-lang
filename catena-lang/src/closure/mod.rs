@@ -11,14 +11,17 @@
 // ad-hoc here.
 
 // Identifies a region of an AnnotatedTerm corresponding to a (bounded) closure
-pub mod region;
+pub(crate) mod region;
 
 // Create an AnnotatedTerm `t` corresponding to a subregion identified by `region`
-pub mod extract;
+pub(crate) mod extract;
 
 // From the extracted AnnotatedTerm create `closure.f.n` as `(f × id_A) ; evaluate`,
 // where `evaluate` is the (inlined) body of cmc.hex's evaluate.
-pub mod body;
+pub(crate) mod body;
 
 // Replace an identified closure region with a caller-provided body.
-pub mod rewrite;
+pub(crate) mod rewrite;
+
+// Integrate region identification, extraction, body construction, and rewrite.
+pub mod convert;

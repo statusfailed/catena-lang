@@ -1,6 +1,6 @@
 use std::collections::BTreeSet;
 
-use open_hypergraphs::lax::NodeId;
+use open_hypergraphs::lax::{EdgeId, Hyperedge, NodeId};
 use thiserror::Error;
 
 use crate::{check::AnnotatedTerm, closure::region::ClosureRegion};
@@ -41,6 +41,7 @@ pub fn rewrite_region(
     validate_replacement(definition, region, replacement)?;
 
     let mut rewritten = definition.clone();
+    let retained_edges = retained_edges(definition, &region.edges);
     rewritten.delete_edges(&region.edges);
     let deleted_nodes = non_defer_region_nodes(region);
     let node_map = delete_nodes_with_witness(&mut rewritten, &deleted_nodes);
@@ -50,7 +51,16 @@ pub fn rewrite_region(
     for (region_source, replacement_source) in defer_inputs.into_iter().zip(replacement_sources) {
         rewritten.unify(region_source, replacement_source);
     }
-    rewritten.targets = remap_targets(
+
+    remap_remaining_edge_interfaces(
+        &mut rewritten,
+        definition,
+        &retained_edges,
+        &node_map,
+        region.closure_wire,
+        &replacement_targets,
+    )?;
+    rewritten.targets = remap_nodes_replacing(
         &node_map,
         &definition.targets,
         region.closure_wire,
@@ -152,18 +162,57 @@ fn delete_nodes_with_witness(term: &mut AnnotatedTerm, nodes: &[NodeId]) -> Vec<
     node_map
 }
 
-fn remap_targets(
+fn retained_edges(definition: &AnnotatedTerm, deleted_edges: &[EdgeId]) -> Vec<EdgeId> {
+    let deleted = deleted_edges
+        .iter()
+        .map(|edge| edge.0)
+        .collect::<BTreeSet<_>>();
+    (0..definition.hypergraph.edges.len())
+        .filter(|edge| !deleted.contains(edge))
+        .map(EdgeId)
+        .collect()
+}
+
+fn remap_remaining_edge_interfaces(
+    rewritten: &mut AnnotatedTerm,
+    original: &AnnotatedTerm,
+    retained_edges: &[EdgeId],
     node_map: &[Option<usize>],
-    targets: &[NodeId],
+    replaced: NodeId,
+    replacement_targets: &[NodeId],
+) -> Result<(), RewriteRegionError> {
+    for (new_edge, old_edge) in retained_edges.iter().enumerate() {
+        let original_hyperedge = &original.hypergraph.adjacency[old_edge.0];
+        rewritten.hypergraph.adjacency[new_edge] = Hyperedge {
+            sources: remap_nodes_replacing(
+                node_map,
+                &original_hyperedge.sources,
+                replaced,
+                replacement_targets,
+            )?,
+            targets: remap_nodes_replacing(
+                node_map,
+                &original_hyperedge.targets,
+                replaced,
+                replacement_targets,
+            )?,
+        };
+    }
+    Ok(())
+}
+
+fn remap_nodes_replacing(
+    node_map: &[Option<usize>],
+    nodes: &[NodeId],
     replaced: NodeId,
     replacement_targets: &[NodeId],
 ) -> Result<Vec<NodeId>, RewriteRegionError> {
     let mut remapped = Vec::new();
-    for &target in targets {
-        if target == replaced {
+    for &node in nodes {
+        if node == replaced {
             remapped.extend_from_slice(replacement_targets);
         } else {
-            remapped.push(remap_boundary_node(node_map, target)?);
+            remapped.push(remap_boundary_node(node_map, node)?);
         }
     }
     Ok(remapped)

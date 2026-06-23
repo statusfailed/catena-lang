@@ -12,6 +12,7 @@ use crate::{
         convert::{ConvertError, convert},
         extract::extract_region,
         region::{ClosureRegionError, Obj, closure_region},
+        theory::convert_theory,
     },
     elaborate::elaborate,
     stdlib,
@@ -138,12 +139,12 @@ fn deferred_bool_id_closure_converts_through_each_stage() {
 
     // Check X = val(bool), A = 1, B = val(bool)
     assert_eq!(
-        converted_closure.name_info.environment,
+        converted_closure.type_info.environment,
         vec![obj("val", vec![obj("bool", vec![])])]
     );
-    assert_eq!(converted_closure.name_info.domain, obj("1", vec![]));
+    assert_eq!(converted_closure.type_info.domain, obj("1", vec![]));
     assert_eq!(
-        converted_closure.name_info.codomain,
+        converted_closure.type_info.codomain,
         obj("val", vec![obj("bool", vec![])])
     );
 
@@ -173,6 +174,142 @@ fn deferred_bool_id_closure_converts_through_each_stage() {
             .any(|operation| operation.as_str()
                 == format!("name.closure.run-bool-id.{}", original_target.0))
     );
+}
+
+#[test]
+fn theory_conversion_converts_if_closure_arguments() {
+    let (theory_set, definition_types) = theories_with(
+        r#"
+        (def program f32.id : (f32 val) -> (f32 val) = [x])
+        (def program if-id-neg : {(bool val) (f32 val)} -> (f32 val) = ([b x.]
+          {(name.f32.id lift) (name.f32.neg lift) [.b] [.x]} bool.if
+        ))
+        "#,
+    );
+    let program = TheoryId(op("program"));
+
+    let converted =
+        convert_theory(&theory_set, &definition_types, &program).expect("theory should convert");
+    let Theory::Theory { arrows, .. } = converted else {
+        panic!("program should be a theory");
+    };
+
+    let if_id_neg = arrows
+        .get(&op("if-id-neg"))
+        .expect("converted original definition should exist");
+    let converted_body = if_id_neg
+        .definition
+        .as_ref()
+        .expect("converted original definition should have a body");
+    assert!(
+        converted_body
+            .hypergraph
+            .edges
+            .iter()
+            .any(|operation| operation.as_str() == "bool.ifc")
+    );
+    assert!(
+        converted_body
+            .hypergraph
+            .edges
+            .iter()
+            .any(|operation| operation.as_str().starts_with("name.closure.if-id-neg."))
+    );
+
+    let closure_names = arrows
+        .keys()
+        .filter(|operation| operation.as_str().starts_with("closure.if-id-neg."))
+        .collect::<Vec<_>>();
+    let name_closure_names = arrows
+        .keys()
+        .filter(|operation| operation.as_str().starts_with("name.closure.if-id-neg."))
+        .collect::<Vec<_>>();
+    assert_eq!(closure_names.len(), 2);
+    assert_eq!(name_closure_names.len(), 2);
+}
+
+#[test]
+fn theory_conversion_converts_if_id_neg_example_end_to_end() {
+    let (theory_set, definition_types) = theories_with(
+        r#"
+        (def program f32.id : (f32 val) -> (f32 val) = [x]) # specialised f32.id
+        (def program if-id-neg : {(bool val) (f32 val)} -> (f32 val) = ([b x.]
+          {(name.f32.id lift) (name.f32.neg lift) [.b] [.x]} bool.if
+        ))
+        "#,
+    );
+    let program = TheoryId(op("program"));
+
+    let converted =
+        convert_theory(&theory_set, &definition_types, &program).expect("theory should convert");
+    let Theory::Theory { arrows, .. } = converted else {
+        panic!("program should be a theory");
+    };
+
+    let if_id_neg = arrows
+        .get(&op("if-id-neg"))
+        .expect("converted original definition should exist");
+    let if_id_neg_body = if_id_neg
+        .definition
+        .as_ref()
+        .expect("converted original definition should have a body");
+    assert_eq!(if_id_neg.type_maps.0.targets.len(), 2);
+    assert_eq!(if_id_neg.type_maps.1.targets.len(), 1);
+    assert_operation_count(if_id_neg_body, "bool.ifc", 1);
+    assert_operation_count(if_id_neg_body, "bool.if", 0);
+
+    let closure_names = arrows
+        .keys()
+        .filter(|operation| operation.as_str().starts_with("closure.if-id-neg."))
+        .cloned()
+        .collect::<Vec<_>>();
+    let name_closure_names = arrows
+        .keys()
+        .filter(|operation| operation.as_str().starts_with("name.closure.if-id-neg."))
+        .cloned()
+        .collect::<Vec<_>>();
+    assert_eq!(closure_names.len(), 2);
+    assert_eq!(name_closure_names.len(), 2);
+
+    for closure_name in &closure_names {
+        let closure = arrows
+            .get(closure_name)
+            .expect("generated closure arrow should exist");
+        assert!(
+            closure.definition.is_some(),
+            "generated closure arrow {closure_name} should have a definition"
+        );
+        assert!(
+            closure.raw.definition.is_some(),
+            "generated closure arrow {closure_name} should have a raw definition"
+        );
+        assert_eq!(closure.type_maps.0.targets.len(), 1);
+        assert_eq!(closure.type_maps.1.targets.len(), 1);
+    }
+
+    for name_closure_name in &name_closure_names {
+        let name_closure = arrows
+            .get(name_closure_name)
+            .expect("generated name arrow should exist");
+        assert!(
+            name_closure.definition.is_none(),
+            "generated name arrow {name_closure_name} should be a declaration"
+        );
+        assert!(name_closure.raw.definition.is_none());
+        assert_eq!(name_closure.type_maps.0.targets.len(), 0);
+        assert_eq!(name_closure.type_maps.1.targets.len(), 1);
+    }
+
+    for name_closure_name in &name_closure_names {
+        assert!(
+            if_id_neg_body
+                .hypergraph
+                .edges
+                .iter()
+                .any(|operation| operation == name_closure_name),
+            "converted if-id-neg should refer to {name_closure_name}"
+        );
+    }
 }
 
 fn theories_with(source: &'static str) -> (TheorySet, DefinitionTypes) {
@@ -262,6 +399,16 @@ fn assert_converted_definition(
         interface_types(definition, &definition.targets),
         target_types
     );
+}
+
+fn assert_operation_count(term: &metacat::theory::Term, operation: &str, expected: usize) {
+    let actual = term
+        .hypergraph
+        .edges
+        .iter()
+        .filter(|actual| actual.as_str() == operation)
+        .count();
+    assert_eq!(actual, expected, "operation count for `{operation}`");
 }
 
 fn obj(name: &str, children: Vec<Obj>) -> Obj {

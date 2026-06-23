@@ -31,7 +31,7 @@ pub struct Converted {
 pub struct ConvertedClosure {
     pub node: NodeId,
     pub term: AnnotatedTerm,
-    pub name_info: TypeInfo,
+    pub type_info: TypeInfo,
 }
 
 impl ConvertedClosure {
@@ -76,12 +76,12 @@ pub fn convert(
     for region in regions {
         let extracted = extract_region(definition, &region)?;
         let body = closure_body(&extracted)?;
-        let name_info = name_info(definition, &region)?;
-        let replacement = replacement_region(definition_name, definition, &region, &name_info);
+        let type_info = type_info(definition, &region)?;
+        let replacement = replacement_region(definition_name, definition, &region, &type_info);
         closures.push(ConvertedClosure {
             node: region.closure_wire,
             term: body,
-            name_info,
+            type_info,
         });
         rewrites.push((region, replacement));
     }
@@ -117,7 +117,7 @@ fn replacement_region(
     definition_name: &Operation,
     definition: &AnnotatedTerm,
     region: &ClosureRegion,
-    name_info: &TypeInfo,
+    type_info: &TypeInfo,
 ) -> AnnotatedTerm {
     let mut replacement = AnnotatedTerm::empty();
     let sources = region
@@ -127,11 +127,11 @@ fn replacement_region(
         .collect::<Vec<_>>();
     let function_pointer = replacement.new_node(function_pointer_type(
         [
-            name_info.environment.clone(),
-            vec![name_info.domain.clone()],
+            type_info.environment.clone(),
+            vec![type_info.domain.clone()],
         ]
         .concat(),
-        vec![name_info.codomain.clone()],
+        vec![type_info.codomain.clone()],
     ));
     replacement.new_edge(
         name_operation(definition_name, region.closure_wire),
@@ -142,7 +142,7 @@ fn replacement_region(
     replacement
 }
 
-fn name_info(definition: &AnnotatedTerm, region: &ClosureRegion) -> Result<TypeInfo, ConvertError> {
+fn type_info(definition: &AnnotatedTerm, region: &ClosureRegion) -> Result<TypeInfo, ConvertError> {
     let environment = region
         .defer_inputs
         .iter()

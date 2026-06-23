@@ -13,7 +13,6 @@ use crate::{
     },
 };
 
-const CLOSURE_TYPE: &str = "=>";
 const FN_TYPE: &str = "->";
 const NAME_PREFIX: &str = "name.";
 const PRODUCT_TYPE: &str = "*";
@@ -68,9 +67,9 @@ pub enum ConvertError {
 pub fn convert(
     definition_name: &Operation,
     definition: &AnnotatedTerm,
+    closure_wires: &[NodeId],
 ) -> Result<Converted, ConvertError> {
-    let closure_wires = closure_output_wires(definition);
-    let regions = closure_region(definition, &closure_wires)?;
+    let regions = closure_region(definition, closure_wires)?;
 
     let mut closures = Vec::new();
     let mut rewrites = Vec::new();
@@ -112,21 +111,6 @@ pub fn convert(
         definition: rewritten,
         closures,
     })
-}
-
-fn closure_output_wires(definition: &AnnotatedTerm) -> Vec<NodeId> {
-    definition
-        .targets
-        .iter()
-        .copied()
-        .filter(|wire| {
-            definition
-                .hypergraph
-                .nodes
-                .get(wire.0)
-                .is_some_and(is_closure_type)
-        })
-        .collect()
 }
 
 fn replacement_region(
@@ -192,7 +176,7 @@ fn closure_parts(object: &Obj) -> Option<(&Obj, &Obj)> {
     let Tree::Node(operation, _, children) = object else {
         return None;
     };
-    if operation.as_str() != CLOSURE_TYPE {
+    if operation.as_str() != "=>" {
         return None;
     }
     let [domain, codomain] = children.as_slice() else {
@@ -223,11 +207,4 @@ fn pack_object(objects: Vec<Obj>) -> Obj {
 
 fn op(name: &str) -> Operation {
     name.parse().expect("generated operation should parse")
-}
-
-fn is_closure_type(object: &Obj) -> bool {
-    let Tree::Node(operation, _, children) = object else {
-        return false;
-    };
-    operation.as_str() == CLOSURE_TYPE && children.len() == 2
 }

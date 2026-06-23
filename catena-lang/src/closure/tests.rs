@@ -9,9 +9,9 @@ use crate::{
     check::{AnnotatedTerm, DefinitionTypes, check},
     closure::{
         body::closure_body,
-        convert::convert,
+        convert::{ConvertError, convert},
         extract::extract_region,
-        region::{Obj, closure_region},
+        region::{ClosureRegionError, Obj, closure_region},
     },
     elaborate::elaborate,
     stdlib,
@@ -29,7 +29,8 @@ fn identity_wire_has_no_closure_work_to_do() {
     let closure_wires = closure_wires(&definition);
     let regions =
         closure_region(&definition, &closure_wires).expect("region discovery should succeed");
-    let converted = convert(&op("id"), &definition).expect("conversion should succeed");
+    let converted =
+        convert(&op("id"), &definition, &closure_wires).expect("conversion should succeed");
 
     // No closure regions appear, none converted
     assert_eq!(regions.len(), 0);
@@ -37,6 +38,26 @@ fn identity_wire_has_no_closure_work_to_do() {
 
     // input definition is (approx.) the same
     assert_same_definition_interface(&converted.definition, &definition);
+}
+
+#[test]
+fn convert_rejects_explicit_non_closure_wire() {
+    let definition = annotated_program_definition(
+        r#"
+        (def program id : [a] -> [a] = [x])
+        "#,
+        "id",
+    );
+    let non_closure_wire = definition.sources[0];
+
+    let error = convert(&op("id"), &definition, &[non_closure_wire])
+        .expect_err("non-closure wire should be rejected");
+
+    assert!(matches!(
+        error,
+        ConvertError::Region(ClosureRegionError::NotClosureTyped { wire })
+            if wire == non_closure_wire.0
+    ));
 }
 
 #[test]
@@ -93,7 +114,8 @@ fn deferred_bool_id_closure_converts_through_each_stage() {
 
     // Run the 'convert' method
     let definition_name = op("run-bool-id");
-    let converted = convert(&definition_name, &definition).expect("conversion should succeed");
+    let converted = convert(&definition_name, &definition, &[original_target])
+        .expect("conversion should succeed");
 
     // There should be one converted closure
     assert_eq!(converted.closures.len(), 1);

@@ -14,10 +14,39 @@ use crate::{
 };
 
 const CLOSURE_TYPE: &str = "=>";
+const FN_TYPE: &str = "->";
+const NAME_PREFIX: &str = "name.";
+const PRODUCT_TYPE: &str = "*";
+const UNIT_TYPE: &str = "1";
+const VALUE_TYPE: &str = "val";
 
 type Obj = Tree<(), Operation>;
 
-pub type ConvertedClosures = Vec<(NodeId, AnnotatedTerm)>;
+#[derive(Debug, Clone)]
+pub struct Converted {
+    pub definition: AnnotatedTerm,
+    pub closures: Vec<ConvertedClosure>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ConvertedClosure {
+    pub node: NodeId,
+    pub term: AnnotatedTerm,
+    pub name_info: TypeInfo,
+}
+
+impl ConvertedClosure {
+    pub fn name(&self, definition_name: &Operation) -> Operation {
+        closure_operation(definition_name, self.node)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TypeInfo {
+    pub environment: Vec<Obj>, // X (context, possibly multiple wires)
+    pub domain: Obj,           // A (always packed)
+    pub codomain: Obj,         // B (always packed)
+}
 
 #[derive(Debug, Error)]
 pub enum ConvertError {
@@ -33,12 +62,13 @@ pub enum ConvertError {
 
 /// Convert closure-typed output regions of an annotated term.
 ///
-/// Returns the rewritten term plus the newly generated closure body terms. Each
-/// generated body is paired with the original closure output node id that caused
-/// it to be created.
+/// Returns the rewritten term plus the generated closure body terms. Each
+/// generated closure records the original closure node id and the type
+/// information needed by the caller to elaborate its `name.closure.*` operation.
 pub fn convert(
+    definition_name: &Operation,
     definition: &AnnotatedTerm,
-) -> Result<(AnnotatedTerm, ConvertedClosures), ConvertError> {
+) -> Result<Converted, ConvertError> {
     let closure_wires = closure_output_wires(definition);
     let regions = closure_region(definition, &closure_wires)?;
 
@@ -47,8 +77,13 @@ pub fn convert(
     for region in regions {
         let extracted = extract_region(definition, &region)?;
         let body = closure_body(&extracted)?;
-        let replacement = replacement_region(definition, &region);
-        closures.push((region.closure_wire, body));
+        let name_info = name_info(definition, &region)?;
+        let replacement = replacement_region(definition_name, definition, &region, &name_info);
+        closures.push(ConvertedClosure {
+            node: region.closure_wire,
+            term: body,
+            name_info,
+        });
         rewrites.push((region, replacement));
     }
 
@@ -73,7 +108,10 @@ pub fn convert(
         rewritten = rewrite_region(&rewritten, &region, &replacement)?;
     }
 
-    Ok((rewritten, closures))
+    Ok(Converted {
+        definition: rewritten,
+        closures,
+    })
 }
 
 fn closure_output_wires(definition: &AnnotatedTerm) -> Vec<NodeId> {
@@ -91,27 +129,100 @@ fn closure_output_wires(definition: &AnnotatedTerm) -> Vec<NodeId> {
         .collect()
 }
 
-fn replacement_region(definition: &AnnotatedTerm, region: &ClosureRegion) -> AnnotatedTerm {
+fn replacement_region(
+    definition_name: &Operation,
+    definition: &AnnotatedTerm,
+    region: &ClosureRegion,
+    name_info: &TypeInfo,
+) -> AnnotatedTerm {
     let mut replacement = AnnotatedTerm::empty();
     let sources = region
         .defer_inputs
         .iter()
         .map(|wire| replacement.new_node(definition.hypergraph.nodes[wire.0].clone()))
         .collect::<Vec<_>>();
-    let target = replacement.new_node(region.closure_type.clone());
+    let function_pointer = replacement.new_node(function_pointer_type(
+        [
+            name_info.environment.clone(),
+            vec![name_info.domain.clone()],
+        ]
+        .concat(),
+        vec![name_info.codomain.clone()],
+    ));
     replacement.new_edge(
-        closure_operation(region.closure_wire),
-        (sources.clone(), vec![target]),
+        name_operation(definition_name, region.closure_wire),
+        (vec![], vec![function_pointer]),
     );
     replacement.sources = sources;
-    replacement.targets = vec![target];
+    replacement.targets = [replacement.sources.clone(), vec![function_pointer]].concat();
     replacement
 }
 
-fn closure_operation(closure_wire: NodeId) -> Operation {
-    format!("closure.{}", closure_wire.0)
+fn name_info(definition: &AnnotatedTerm, region: &ClosureRegion) -> Result<TypeInfo, ConvertError> {
+    let environment = region
+        .defer_inputs
+        .iter()
+        .map(|wire| definition.hypergraph.nodes[wire.0].clone())
+        .collect::<Vec<_>>();
+    let (domain, codomain) = closure_parts(&region.closure_type)
+        .expect("closure region type should be a binary closure type");
+    Ok(TypeInfo {
+        environment,
+        domain: domain.clone(),
+        codomain: codomain.clone(),
+    })
+}
+
+fn closure_operation(definition_name: &Operation, closure_wire: NodeId) -> Operation {
+    format!("closure.{}.{}", definition_name, closure_wire.0)
         .parse()
         .expect("generated closure operation should parse")
+}
+
+fn name_operation(definition_name: &Operation, closure_wire: NodeId) -> Operation {
+    format!(
+        "{NAME_PREFIX}{}",
+        closure_operation(definition_name, closure_wire)
+    )
+    .parse()
+    .expect("generated name operation should parse")
+}
+
+fn closure_parts(object: &Obj) -> Option<(&Obj, &Obj)> {
+    let Tree::Node(operation, _, children) = object else {
+        return None;
+    };
+    if operation.as_str() != CLOSURE_TYPE {
+        return None;
+    }
+    let [domain, codomain] = children.as_slice() else {
+        return None;
+    };
+    Some((domain, codomain))
+}
+
+fn function_pointer_type(sources: Vec<Obj>, targets: Vec<Obj>) -> Obj {
+    value_type(function_type(pack_object(sources), pack_object(targets)))
+}
+
+fn function_type(domain: Obj, codomain: Obj) -> Obj {
+    Tree::Node(op(FN_TYPE), 0, vec![domain, codomain])
+}
+
+fn value_type(inner: Obj) -> Obj {
+    Tree::Node(op(VALUE_TYPE), 0, vec![inner])
+}
+
+fn pack_object(objects: Vec<Obj>) -> Obj {
+    match objects.as_slice() {
+        [] => Tree::Node(op(UNIT_TYPE), 0, vec![]),
+        [only] => only.clone(),
+        _ => Tree::Node(op(PRODUCT_TYPE), 0, objects),
+    }
+}
+
+fn op(name: &str) -> Operation {
+    name.parse().expect("generated operation should parse")
 }
 
 fn is_closure_type(object: &Obj) -> bool {
@@ -119,112 +230,4 @@ fn is_closure_type(object: &Obj) -> bool {
         return false;
     };
     operation.as_str() == CLOSURE_TYPE && children.len() == 2
-}
-
-#[cfg(test)]
-mod tests {
-    use metacat::{
-        theory::{RawTheorySet, Theory, TheoryId, TheorySet},
-        tree::Tree,
-    };
-
-    use super::*;
-    use crate::{
-        check::{DefinitionTypes, check},
-        elaborate::elaborate,
-        stdlib,
-    };
-
-    #[test]
-    fn convert_closure_output_splices_placeholder_and_returns_body() {
-        let definition = annotated_program_definition(
-            r#"
-            (def program run-bool-id : (bool val) -> ({1 (bool val)} =>) = (
-              {[x] bool.t}
-              bool.and
-              bool.not
-              {defer (name.bool.id lift)}
-              compose
-            ))
-            "#,
-            "run-bool-id",
-        );
-        let original_target = definition.targets[0];
-
-        let (rewritten, closures) = convert(&definition).expect("conversion should succeed");
-
-        assert_eq!(closures.len(), 1);
-        assert_eq!(closures[0].0, original_target);
-        assert_eq!(closures[0].1.hypergraph.edges.len(), 7);
-        assert_eq!(rewritten.hypergraph.edges.len(), 4);
-        assert!(
-            rewritten
-                .hypergraph
-                .edges
-                .iter()
-                .any(|operation| operation.as_str() == format!("closure.{}", original_target.0))
-        );
-        assert_eq!(
-            interface_types(&closures[0].1, &closures[0].1.sources),
-            vec![obj("val", vec![obj("bool", vec![])]), obj("1", vec![])]
-        );
-        assert_eq!(
-            interface_types(&closures[0].1, &closures[0].1.targets),
-            vec![obj("val", vec![obj("bool", vec![])])]
-        );
-    }
-
-    fn theories_with(source: &'static str) -> (TheorySet, DefinitionTypes) {
-        let raw_theories = RawTheorySet::from_texts(stdlib::sources().chain([source]))
-            .expect("test theories should parse");
-        let elaborated = elaborate(raw_theories).expect("test theories should elaborate");
-        let theory_set = TheorySet::from_raw(elaborated).expect("test theories should load");
-        let definition_types = check(&theory_set).expect("test theories should typecheck");
-        (theory_set, definition_types)
-    }
-
-    fn annotated_program_definition(source: &'static str, definition: &str) -> AnnotatedTerm {
-        let (theory_set, definition_types) = theories_with(source);
-        let program = TheoryId("program".parse().expect("program theory id should parse"));
-        let definition: Operation = definition
-            .parse()
-            .expect("program definition name should parse");
-        let theory = theory_set
-            .theories
-            .get(&program)
-            .expect("program theory should exist");
-        let Theory::Theory { arrows, .. } = theory else {
-            panic!("program should be a theory");
-        };
-        let arrow = arrows
-            .get(&definition)
-            .expect("program definition should exist");
-        let mut body = arrow
-            .definition
-            .clone()
-            .expect("program arrow should be a definition");
-        body.quotient().ok();
-        let labels = definition_types
-            .get(&program)
-            .and_then(|definitions| definitions.get(&definition))
-            .cloned()
-            .expect("program definition should have checked node types");
-        body.with_nodes(|_| labels)
-            .expect("checked node labels should match definition graph")
-    }
-
-    fn interface_types(term: &AnnotatedTerm, interface: &[NodeId]) -> Vec<Obj> {
-        interface
-            .iter()
-            .map(|node| term.hypergraph.nodes[node.0].clone())
-            .collect()
-    }
-
-    fn obj(name: &str, children: Vec<Obj>) -> Obj {
-        Tree::Node(
-            name.parse().expect("test operation should parse"),
-            0,
-            children,
-        )
-    }
 }

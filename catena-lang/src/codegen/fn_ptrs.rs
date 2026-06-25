@@ -4,10 +4,7 @@ use hexpr::Operation;
 use open_hypergraphs::lax::NodeId;
 use thiserror::Error;
 
-use crate::{
-    check::AnnotatedTerm,
-    pass::record_boundary_sizes::OperationWithBoundarySizes,
-};
+use crate::{check::AnnotatedTerm, pass::record_boundary_sizes::OperationWithBoundarySizes};
 
 const NAME_PREFIX: &str = "name.";
 

@@ -8,7 +8,6 @@ const GPU_DIALECT_ENV: &str = "CATENA_GPU_DIALECT";
 
 const SIN_EXAMPLES: &str = include_str!("../examples/sincos.hex");
 const NN_EXAMPLES: &str = include_str!("../examples/nn.hex");
-const CLOSURE_EXAMPLES: &str = include_str!("../examples/closure.hex");
 
 /// Create a runtime with a provided user source file
 fn runtime_with(source: &'static str) -> anyhow::Result<Runtime> {
@@ -766,17 +765,5 @@ fn powf_test() -> anyhow::Result<()> {
 #[path = "cases/reducec.rs"]
 mod reducec;
 
-#[test]
-fn if_id_neg_test() -> anyhow::Result<()> {
-    let runtime = runtime_with(CLOSURE_EXAMPLES)?;
-    let input = 1.0f32;
-    let [result] = runtime.exec("if-id-neg", [false.into(), input.into()])?;
-
-    let Value::F32(result) = result else {
-        anyhow::bail!("log-approx returned non-f32 value: {result:?}");
-    };
-
-    let expected = -input;
-    assert_eq!(expected, result);
-    Ok(())
-}
+#[path = "cases/closure.rs"]
+mod closure;

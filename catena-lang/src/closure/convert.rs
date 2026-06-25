@@ -17,7 +17,7 @@ const FN_TYPE: &str = "->";
 const NAME_PREFIX: &str = "name.";
 const PRODUCT_INTRO: &str = "*.intro";
 const PRODUCT_TYPE: &str = "*";
-const UNIT_INTRO: &str = "1.intro";
+const UNIT_INTRO: &str = "unit.intro";
 const UNIT_TYPE: &str = "1";
 const VALUE_TYPE: &str = "val";
 

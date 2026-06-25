@@ -15,7 +15,9 @@ use crate::{
 
 const FN_TYPE: &str = "->";
 const NAME_PREFIX: &str = "name.";
+const PRODUCT_INTRO: &str = "*.intro";
 const PRODUCT_TYPE: &str = "*";
+const UNIT_INTRO: &str = "1.intro";
 const UNIT_TYPE: &str = "1";
 const VALUE_TYPE: &str = "val";
 
@@ -42,9 +44,9 @@ impl ConvertedClosure {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TypeInfo {
-    pub environment: Vec<Obj>, // X (context, possibly multiple wires)
-    pub domain: Obj,           // A (always packed)
-    pub codomain: Obj,         // B (always packed)
+    pub environment: Obj, // X (always packed)
+    pub domain: Obj,      // A (always packed)
+    pub codomain: Obj,    // B (always packed)
 }
 
 #[derive(Debug, Error)]
@@ -125,12 +127,9 @@ fn replacement_region(
         .iter()
         .map(|wire| replacement.new_node(definition.hypergraph.nodes[wire.0].clone()))
         .collect::<Vec<_>>();
+    let environment = packed_environment_target(&mut replacement, &sources, &type_info.environment);
     let function_pointer = replacement.new_node(function_pointer_type(
-        [
-            type_info.environment.clone(),
-            vec![type_info.domain.clone()],
-        ]
-        .concat(),
+        vec![type_info.environment.clone(), type_info.domain.clone()],
         vec![type_info.codomain.clone()],
     ));
     replacement.new_edge(
@@ -138,16 +137,62 @@ fn replacement_region(
         (vec![], vec![function_pointer]),
     );
     replacement.sources = sources;
-    replacement.targets = [replacement.sources.clone(), vec![function_pointer]].concat();
+    replacement.targets = vec![environment, function_pointer];
     replacement
 }
 
+fn packed_environment_target(
+    replacement: &mut AnnotatedTerm,
+    components: &[NodeId],
+    environment_type: &Obj,
+) -> NodeId {
+    match components {
+        [] => {
+            let unit = replacement.new_node(unit_type());
+            replacement.new_edge(op(UNIT_INTRO), (vec![], vec![unit]));
+            unit
+        }
+        [only] => *only,
+        _ => {
+            let component_types = components
+                .iter()
+                .map(|node| replacement.hypergraph.nodes[node.0].clone())
+                .collect::<Vec<_>>();
+            let packed = replacement.new_node(environment_type.clone());
+            pack_environment(replacement, components, &component_types, packed);
+            packed
+        }
+    }
+}
+
+fn pack_environment(
+    replacement: &mut AnnotatedTerm,
+    components: &[NodeId],
+    component_types: &[Obj],
+    packed: NodeId,
+) {
+    match components {
+        [] | [_] => {}
+        [left, right] => {
+            replacement.new_edge(op(PRODUCT_INTRO), (vec![*left, *right], vec![packed]));
+        }
+        [left, rest @ ..] => {
+            let tail_type = pack_object(component_types[1..].to_vec());
+            let tail = replacement.new_node(tail_type);
+            pack_environment(replacement, rest, &component_types[1..], tail);
+            replacement.new_edge(op(PRODUCT_INTRO), (vec![*left, tail], vec![packed]));
+        }
+    }
+}
+
 fn type_info(definition: &AnnotatedTerm, region: &ClosureRegion) -> Result<TypeInfo, ConvertError> {
-    let environment = region
-        .defer_inputs
-        .iter()
-        .map(|wire| definition.hypergraph.nodes[wire.0].clone())
-        .collect::<Vec<_>>();
+    let environment = pack_object(
+        region
+            .defer_inputs
+            .iter()
+            .map(|wire| definition.hypergraph.nodes[wire.0].clone())
+            .collect(),
+    );
     let (domain, codomain) = closure_parts(&region.closure_type)
         .expect("closure region type should be a binary closure type");
     Ok(TypeInfo {
@@ -201,8 +246,16 @@ fn pack_object(objects: Vec<Obj>) -> Obj {
     match objects.as_slice() {
         [] => Tree::Node(op(UNIT_TYPE), 0, vec![]),
         [only] => only.clone(),
-        _ => Tree::Node(op(PRODUCT_TYPE), 0, objects),
+        [head, tail @ ..] => Tree::Node(
+            op(PRODUCT_TYPE),
+            0,
+            vec![head.clone(), pack_object(tail.to_vec())],
+        ),
     }
+}
+
+fn unit_type() -> Obj {
+    Tree::Node(op(UNIT_TYPE), 0, vec![])
 }
 
 fn op(name: &str) -> Operation {

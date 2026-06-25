@@ -140,7 +140,7 @@ fn deferred_bool_id_closure_converts_through_each_stage() {
     // Check X = val(bool), A = 1, B = val(bool)
     assert_eq!(
         converted_closure.type_info.environment,
-        vec![obj("val", vec![obj("bool", vec![])])]
+        obj("val", vec![obj("bool", vec![])])
     );
     assert_eq!(converted_closure.type_info.domain, obj("1", vec![]));
     assert_eq!(
@@ -283,7 +283,7 @@ fn theory_conversion_converts_if_id_neg_example_end_to_end() {
             closure.raw.definition.is_some(),
             "generated closure arrow {closure_name} should have a raw definition"
         );
-        assert_eq!(closure.type_maps.0.targets.len(), 1);
+        assert_eq!(closure.type_maps.0.targets.len(), 2);
         assert_eq!(closure.type_maps.1.targets.len(), 1);
     }
 

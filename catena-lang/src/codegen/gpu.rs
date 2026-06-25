@@ -33,28 +33,40 @@ pub enum GpuRenderError {
         expected: usize,
         actual: usize,
     },
+    #[error("operation `{op}` expected {expected} input components, found {actual}")]
+    InvalidInputComponentCount {
+        op: Operation,
+        expected: usize,
+        actual: usize,
+    },
+    #[error(
+        "operation `{op}` input sizes account for {expected} flattened inputs, but assignment has {actual}"
+    )]
+    InvalidFlattenedInputCount {
+        op: Operation,
+        expected: usize,
+        actual: usize,
+    },
+    #[error(
+        "operation `{op}` expected {expected} {description} in input component `{component}`, found {actual}"
+    )]
+    InvalidInputComponentValueCount {
+        op: Operation,
+        component: &'static str,
+        description: &'static str,
+        expected: usize,
+        actual: usize,
+    },
+    #[error("operation `{op}` input component `{component}` is erased: {description}")]
+    ErasedInputComponentValue {
+        op: Operation,
+        component: &'static str,
+        description: &'static str,
+    },
     #[error("gpu.materialize is missing launch params")]
     MissingMaterializeLaunchParams,
     #[error("gpu.materialize is missing function input")]
     MissingMaterializeFunction,
-    #[error(
-        "reducec flat ABI parser expected exactly two function symbol inputs, found {actual}; function-valued reducec environments are not supported yet"
-    )]
-    InvalidReducecFunctionCount { actual: usize },
-    #[error("reducec is missing zero input")]
-    MissingReducecZero,
-    #[error("reducec zero input is erased")]
-    ErasedReducecZero,
-    #[error(
-        "reducec expected exactly one runtime length input after the producer function, found {actual}"
-    )]
-    InvalidReducecLengthCount { actual: usize },
-    #[error("materializec is missing function input")]
-    MissingMaterializecFunction,
-    #[error("materializec is missing length input")]
-    MissingMaterializecLength,
-    #[error("materializec expected one length input after the function, found {actual}")]
-    InvalidMaterializecLength { actual: usize },
     #[error("invalid integer constant operation `{op}`")]
     InvalidIntegerConstant { op: Operation },
 }
@@ -932,6 +944,8 @@ mod tests {
                 targets: vec![out.clone()],
                 assignments: vec![GpuAssign {
                     op: op("materializec"),
+                    input_sizes: vec![0, 1, 1],
+                    output_sizes: Vec::new(),
                     call_symbol: None,
                     inputs: vec![
                         GpuValue::FnSymbol(FnPtrSymbol {
@@ -952,6 +966,8 @@ mod tests {
                 targets: vec![value.clone()],
                 assignments: vec![GpuAssign {
                     op: op("u64.one"),
+                    input_sizes: Vec::new(),
+                    output_sizes: Vec::new(),
                     call_symbol: None,
                     inputs: vec![],
                     outputs: vec![value],

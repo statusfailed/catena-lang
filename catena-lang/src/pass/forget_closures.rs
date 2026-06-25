@@ -71,10 +71,9 @@ pub fn run(
 
             let typed =
                 typed_definition(theory_id, definition_name, theory, theory_definition_types)?;
-            transformed.insert(
-                definition_name.clone(),
-                ForgetClosures { theory }.map_arrow(&typed),
-            );
+            let mut transformed_definition = ForgetClosures { theory }.map_arrow(&typed);
+            transformed_definition.quotient().ok();
+            transformed.insert(definition_name.clone(), transformed_definition);
         }
 
         if !transformed.is_empty() {
@@ -407,7 +406,7 @@ mod tests {
     }
 
     fn product(left: Obj, right: Obj) -> Obj {
-        Tree::Node(op(PRODUCT_TYPE), 0, vec![left, right])
+        Tree::Node(op("*"), 0, vec![left, right])
     }
 
     #[test]

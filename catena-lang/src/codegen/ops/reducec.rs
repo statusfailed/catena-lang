@@ -21,8 +21,12 @@
 
 use crate::codegen::{
     GpuAssign, GpuValue,
+    components::{
+        Component, input_components, is_runtime_value, runtime_values, single_function,
+        single_value, value_expr,
+    },
     gpu::GpuRenderError,
-    render_utils::{c_type, invalid_outputs, sanitize_ident},
+    render_utils::{c_type, invalid_outputs},
     runtime_type,
 };
 
@@ -85,82 +89,134 @@ pub(in crate::codegen) fn render(
 
 type ReducecParts<'a> = (
     &'a GpuValue,
-    Vec<&'a GpuValue>,
+    Component<'a>,
     &'a GpuValue,
-    Vec<&'a GpuValue>,
+    Component<'a>,
     &'a GpuValue,
     &'a GpuValue,
 );
 
 fn parts(assignment: &GpuAssign) -> Result<ReducecParts<'_>, GpuRenderError> {
-    // assume there are only two function indices for now
-    // we don't allow function pointers in context
-    // a cleaner solution requires a refactoring of lowering that preserves type info
-    let func_indices = assignment
-        .inputs
-        .iter()
-        .enumerate()
-        .filter_map(|(index, input)| matches!(input, GpuValue::FnSymbol(_)).then_some(index))
-        .collect::<Vec<_>>();
-    let [add_index, get_index] = func_indices.as_slice() else {
-        return Err(GpuRenderError::InvalidReducecFunctionCount {
-            actual: func_indices.len(),
+    let components = input_components(assignment)?;
+    let [zero, add_env, add_fn, get_env, get_fn, n] = components.as_slice() else {
+        return Err(GpuRenderError::InvalidInputComponentCount {
+            op: assignment.op.clone(),
+            expected: 6,
+            actual: components.len(),
         });
     };
-    if *add_index == 0 {
-        return Err(GpuRenderError::MissingReducecZero);
+
+    if zero.is_empty() {
+        return Err(invalid_component_count(
+            assignment,
+            "zero",
+            "runtime zero input",
+            0,
+        ));
     }
-
-    // The zero value must be a runtime value because it initializes the emitted
-    // accumulator variable directly.
-    let zero = &assignment.inputs[0];
-    if !is_runtime_value(zero) {
-        return Err(GpuRenderError::ErasedReducecZero);
-    }
-
-    // Everything between zero and the add function is the add closure's
-    // environment. Erased values can appear here; they are filtered at call
-    // rendering time.
-    let add_env = assignment.inputs[1..*add_index].iter().collect::<Vec<_>>();
-    let add_fn = &assignment.inputs[*add_index];
-
-    // Everything between the add function and producer function is the
-    // producer closure's environment.
-    let get_env = assignment.inputs[*add_index + 1..*get_index]
-        .iter()
-        .collect::<Vec<_>>();
-    let get_fn = &assignment.inputs[*get_index];
-
-    // After the producer function, only one runtime value should remain: the
-    // reduction length. Type-level witnesses in this suffix are erased.
-    let trailing_runtime = assignment.inputs[*get_index + 1..]
-        .iter()
-        .filter(|input| is_runtime_value(input))
-        .collect::<Vec<_>>();
-    let [n] = trailing_runtime.as_slice() else {
-        return Err(GpuRenderError::InvalidReducecLengthCount {
-            actual: trailing_runtime.len(),
+    if zero.len() == 1 && !is_runtime_value(&zero[0]) {
+        return Err(GpuRenderError::ErasedInputComponentValue {
+            op: assignment.op.clone(),
+            component: "zero",
+            description: "reducec zero input must be a runtime value",
         });
-    };
+    }
+    let zero = single_value(zero).map_err(|error| {
+        invalid_component_count(assignment, "zero", "runtime zero input", error.actual)
+    })?;
+
+    let add_fn = single_function(add_fn).map_err(|error| {
+        invalid_component_count(assignment, "add_fn", "function symbol input", error.actual)
+    })?;
+    let get_fn = single_function(get_fn).map_err(|error| {
+        invalid_component_count(assignment, "get_fn", "function symbol input", error.actual)
+    })?;
+    let n = single_value(n).map_err(|error| {
+        invalid_component_count(assignment, "n", "runtime length input", error.actual)
+    })?;
 
     Ok((zero, add_env, add_fn, get_env, get_fn, n))
 }
 
-fn runtime_args(values: Vec<&GpuValue>) -> Vec<String> {
-    values
-        .into_iter()
-        .filter(|value| is_runtime_value(value))
-        .map(value_expr)
-        .collect()
+fn invalid_component_count(
+    assignment: &GpuAssign,
+    component: &'static str,
+    description: &'static str,
+    actual: usize,
+) -> GpuRenderError {
+    GpuRenderError::InvalidInputComponentValueCount {
+        op: assignment.op.clone(),
+        component,
+        description,
+        expected: 1,
+        actual,
+    }
 }
 
-fn is_runtime_value(value: &GpuValue) -> bool {
-    matches!(value, GpuValue::Var(var) if runtime_type(var).is_some())
+fn runtime_args(values: Component<'_>) -> Vec<String> {
+    runtime_values(values).map(value_expr).collect()
 }
 
-fn value_expr(value: &GpuValue) -> String {
-    match value {
-        GpuValue::Var(var) => var.name.clone(),
-        GpuValue::FnSymbol(symbol) => sanitize_ident(&format!("program.{}", symbol.target)),
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::codegen::{
+        GpuAssign, GpuVar,
+        fn_ptrs::FnPtrSymbol,
+        lower_types::{CType, LoweredType},
+    };
+    use hexpr::Operation;
+    use open_hypergraphs::lax::NodeId;
+
+    fn op(name: &str) -> Operation {
+        name.parse().unwrap()
+    }
+
+    fn var(node: usize, name: &str) -> GpuValue {
+        GpuValue::Var(GpuVar {
+            node: NodeId(node),
+            name: name.to_string(),
+            lowered: LoweredType::Runtime(CType::U64),
+        })
+    }
+
+    fn fn_symbol(name: &str) -> GpuValue {
+        GpuValue::FnSymbol(FnPtrSymbol { target: op(name) })
+    }
+
+    #[test]
+    fn input_sizes_group_flattened_reducec_environments() {
+        let output = GpuVar {
+            node: NodeId(9),
+            name: "out".to_string(),
+            lowered: LoweredType::Runtime(CType::U64),
+        };
+        let assignment = GpuAssign {
+            op: op("reducec"),
+            input_sizes: vec![1, 2, 1, 2, 1, 1],
+            output_sizes: vec![1],
+            call_symbol: None,
+            inputs: vec![
+                var(0, "zero"),
+                var(1, "add_env0"),
+                var(2, "add_env1"),
+                fn_symbol("add"),
+                var(3, "get_env0"),
+                var(4, "get_env1"),
+                fn_symbol("get"),
+                var(5, "n"),
+            ],
+            outputs: vec![output],
+        };
+
+        let mut out = String::new();
+        render(&mut out, &assignment).unwrap();
+
+        assert!(out.contains("program_get(get_env0, get_env1, reduce_i_out, &reduce_value_out);"));
+        assert!(
+            out.contains(
+                "program_add(add_env0, add_env1, out, reduce_value_out, &reduce_next_out);"
+            )
+        );
     }
 }

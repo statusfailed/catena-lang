@@ -11,15 +11,11 @@ use crate::{
         region::{ClosureRegion, ClosureRegionError, closure_region},
         rewrite::{RewriteRegionError, rewrite_region},
     },
+    stdlib::constants::{
+        FN_HOM_TYPE, FN_REF_TYPE, NAME_PREFIX, PRODUCT_INTRO, PRODUCT_TYPE, UNIT_INTRO, UNIT_TYPE,
+        VALUE_TYPE,
+    },
 };
-
-const FN_TYPE: &str = "->";
-const NAME_PREFIX: &str = "name.";
-const PRODUCT_INTRO: &str = "*.intro";
-const PRODUCT_TYPE: &str = "*";
-const UNIT_INTRO: &str = "unit.intro";
-const UNIT_TYPE: &str = "1";
-const VALUE_TYPE: &str = "val";
 
 type Obj = Tree<(), Operation>;
 
@@ -221,7 +217,7 @@ fn closure_parts(object: &Obj) -> Option<(&Obj, &Obj)> {
     let Tree::Node(operation, _, children) = object else {
         return None;
     };
-    if operation.as_str() != "=>" {
+    if operation.as_str() != FN_HOM_TYPE {
         return None;
     }
     let [domain, codomain] = children.as_slice() else {
@@ -235,7 +231,7 @@ fn function_pointer_type(sources: Vec<Obj>, targets: Vec<Obj>) -> Obj {
 }
 
 fn function_type(domain: Obj, codomain: Obj) -> Obj {
-    Tree::Node(op(FN_TYPE), 0, vec![domain, codomain])
+    Tree::Node(op(FN_REF_TYPE), 0, vec![domain, codomain])
 }
 
 fn value_type(inner: Obj) -> Obj {

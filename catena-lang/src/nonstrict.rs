@@ -13,12 +13,9 @@ use open_hypergraphs::{
     lax::{Hyperedge, Hypergraph, OpenHypergraph},
 };
 
-const PRODUCT_TYPE: &str = "*";
-const UNIT_TYPE: &str = "1";
-const PRODUCT_INTRO: &str = "*.intro";
-const PRODUCT_ELIM: &str = "*.elim";
-const UNIT_INTRO: &str = "unit.intro";
-const UNIT_ELIM: &str = "unit.elim";
+use crate::stdlib::constants::{
+    PRODUCT_ELIM, PRODUCT_INTRO, PRODUCT_TYPE, UNIT_ELIM, UNIT_INTRO, UNIT_TYPE,
+};
 
 pub(crate) type Obj = Tree<(), Operation>;
 pub(crate) type Arr = Operation;

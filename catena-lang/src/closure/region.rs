@@ -8,13 +8,12 @@ use metacat::tree::Tree;
 use open_hypergraphs::lax::{EdgeId, NodeId};
 use thiserror::Error;
 
-use crate::check::AnnotatedTerm;
+use crate::{
+    check::AnnotatedTerm,
+    stdlib::constants::{DEFER, FN_HOM_TYPE, NAME_PREFIX},
+};
 
 pub type Obj = Tree<(), Operation>;
-
-const CLOSURE_TYPE: &str = "=>";
-const DEFER: &str = "defer";
-const NAME_PREFIX: &str = "name.";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ClosureRegion {
@@ -145,7 +144,7 @@ fn is_closure_type(object: &Obj) -> bool {
     let Tree::Node(operation, _, children) = object else {
         return false;
     };
-    operation.as_str() == CLOSURE_TYPE && children.len() == 2
+    operation.as_str() == FN_HOM_TYPE && children.len() == 2
 }
 
 struct Connectivity {

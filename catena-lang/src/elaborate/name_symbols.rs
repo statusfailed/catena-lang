@@ -7,13 +7,10 @@ use metacat::theory::{
     transitive_dependency_subset,
 };
 
-use crate::elaborate::{ElaborateError, GENERATED_VARIABLE_PREFIX};
-
-const FN_TYPE: &str = "->";
-const PRODUCT_TYPE: &str = "*";
-const UNIT_TYPE: &str = "1";
-const VALUE_TYPE: &str = "val";
-const NAME_PREFIX: &str = "name.";
+use crate::{
+    elaborate::{ElaborateError, GENERATED_VARIABLE_PREFIX},
+    stdlib::constants::{FN_REF_TYPE, NAME_PREFIX, PRODUCT_TYPE, UNIT_TYPE, VALUE_TYPE},
+};
 
 #[derive(Default)]
 struct GeneratedVars {
@@ -157,7 +154,7 @@ fn target_type_map(
     Ok(Hexpr::Composition(vec![
         copy,
         Hexpr::Tensor(vec![pack_s, pack_t]),
-        parse_operation_hexpr(FN_TYPE)?,
+        parse_operation_hexpr(FN_REF_TYPE)?,
         parse_operation_hexpr(VALUE_TYPE)?,
     ]))
 }

@@ -2,7 +2,11 @@ use hexpr::Operation;
 use metacat::tree::Tree;
 use thiserror::Error;
 
-const VALUE_TYPES: &[&str] = &["val", "value"];
+use crate::stdlib::constants::{
+    FN_HOM_TYPE, FN_REF_TYPE, PRODUCT_TYPE, UNIT_TYPE, VALUE_TYPE, VALUE_TYPE_ALIAS,
+};
+
+const VALUE_TYPES: &[&str] = &[VALUE_TYPE, VALUE_TYPE_ALIAS];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LoweredType {
@@ -51,7 +55,7 @@ pub fn lower_type(ty: &Tree<(), Operation>) -> Result<LoweredType, LowerTypeErro
             let [_name, ty] = expect_binary(op.as_str(), children)?;
             lower_runtime_type(ty).map(LoweredType::Runtime)
         }
-        Tree::Node(op, 0, _children) if op.as_str() == "->" => {
+        Tree::Node(op, 0, _children) if op.as_str() == FN_REF_TYPE => {
             Err(LowerTypeError::FunctionPointerRuntime)
         }
         Tree::Node(op, 0, children) if op.as_str() == "gpu.buf" => {
@@ -95,7 +99,9 @@ pub fn lower_runtime_type(ty: &Tree<(), Operation>) -> Result<CType, LowerTypeEr
             let [_name, ty] = expect_binary(op.as_str(), children)?;
             lower_runtime_type(ty)
         }
-        Tree::Node(op, 0, children) if op.as_str() == "1" && children.is_empty() => Ok(CType::Unit),
+        Tree::Node(op, 0, children) if op.as_str() == UNIT_TYPE && children.is_empty() => {
+            Ok(CType::Unit)
+        }
         Tree::Node(op, 0, children) if op.as_str() == "bool" && children.is_empty() => {
             Ok(CType::Bool)
         }
@@ -108,7 +114,7 @@ pub fn lower_runtime_type(ty: &Tree<(), Operation>) -> Result<CType, LowerTypeEr
         Tree::Node(op, 0, children) if op.as_str() == "f32" && children.is_empty() => {
             Ok(CType::F32)
         }
-        Tree::Node(op, 0, _children) if op.as_str() == "->" => {
+        Tree::Node(op, 0, _children) if op.as_str() == FN_REF_TYPE => {
             Err(LowerTypeError::FunctionPointerRuntime)
         }
         Tree::Node(op, 0, children) if op.as_str() == "gpu.buf" => {
@@ -145,7 +151,7 @@ fn lower_interface_into(
     out: &mut Vec<CType>,
 ) -> Result<(), LowerTypeError> {
     match ty {
-        Tree::Node(op, 0, children) if op.as_str() == "*" => {
+        Tree::Node(op, 0, children) if op.as_str() == PRODUCT_TYPE => {
             for child in children {
                 lower_interface_into(child, out)?;
             }
@@ -172,7 +178,9 @@ fn value_inner(ty: &Tree<(), Operation>) -> Result<Option<&Tree<(), Operation>>,
 
 fn contains_closure(ty: &Tree<(), Operation>) -> bool {
     match ty {
-        Tree::Node(op, _, children) => op.as_str() == "=>" || children.iter().any(contains_closure),
+        Tree::Node(op, _, children) => {
+            op.as_str() == FN_HOM_TYPE || children.iter().any(contains_closure)
+        }
         _ => false,
     }
 }

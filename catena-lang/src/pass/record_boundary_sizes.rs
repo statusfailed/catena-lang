@@ -97,9 +97,7 @@ pub fn run<A: Clone>(
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    const PRODUCT_TYPE: &str = "*";
-    const UNIT_TYPE: &str = "1";
+    use crate::stdlib::constants::{PRODUCT_TYPE, UNIT_TYPE};
 
     fn op(name: &str) -> Operation {
         name.parse().expect("test operation should parse")

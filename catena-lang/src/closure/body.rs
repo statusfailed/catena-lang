@@ -3,14 +3,11 @@ use metacat::tree::Tree;
 use open_hypergraphs::lax::NodeId;
 use thiserror::Error;
 
-use crate::{check::AnnotatedTerm, nonstrict::to_unpacker};
-
-const CLOSURE_TYPE: &str = "=>";
-const PRODUCT_TYPE: &str = "*";
-const UNIT_TYPE: &str = "1";
-const DEFER: &str = "defer";
-const COMPOSE: &str = "compose";
-const RUN: &str = "run";
+use crate::{
+    check::AnnotatedTerm,
+    nonstrict::to_unpacker,
+    stdlib::constants::{COMPOSE, DEFER, FN_HOM_TYPE, PRODUCT_TYPE, RUN, UNIT_TYPE},
+};
 
 type Obj = Tree<(), Operation>;
 
@@ -91,7 +88,7 @@ fn closure_parts(object: &Obj) -> Option<(&Obj, &Obj)> {
     let Tree::Node(operation, _, children) = object else {
         return None;
     };
-    if operation.as_str() != CLOSURE_TYPE {
+    if operation.as_str() != FN_HOM_TYPE {
         return None;
     }
     let [domain, codomain] = children.as_slice() else {
@@ -101,7 +98,7 @@ fn closure_parts(object: &Obj) -> Option<(&Obj, &Obj)> {
 }
 
 fn closure_type_of(domain: Obj, codomain: Obj) -> Obj {
-    Tree::Node(op(CLOSURE_TYPE), 0, vec![domain, codomain])
+    Tree::Node(op(FN_HOM_TYPE), 0, vec![domain, codomain])
 }
 
 fn unit_type() -> Obj {

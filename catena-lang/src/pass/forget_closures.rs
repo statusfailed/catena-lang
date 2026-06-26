@@ -17,20 +17,11 @@ use crate::{
     check::{AnnotatedTerm, DefinitionTypes},
     nonstrict::{to_packer, to_unpacker, unpack_packed_object},
     report::TheoryTermMap,
+    stdlib::constants::{
+        COMPOSE, DEFER, EVAL, FN_HOM_TYPE, FN_REF_TYPE, LIFT, NAME_PREFIX, PRODUCT_TYPE, RUN,
+        TENSOR, UNIT_TYPE, VALUE_TYPE,
+    },
 };
-
-const CLOSURE_TYPE: &str = "=>";
-const FUNCTION_TYPE: &str = "->";
-const PRODUCT_TYPE: &str = "*";
-const UNIT_TYPE: &str = "1";
-const VALUE_TYPE: &str = "val";
-const NAME_PREFIX: &str = "name.";
-const DEFER: &str = "defer";
-const RUN: &str = "run";
-const COMPOSE: &str = "compose";
-const TENSOR: &str = "tensor";
-const LIFT: &str = "lift";
-const EVAL: &str = "eval";
 
 pub type Obj = Tree<(), Operation>;
 pub type Arr = Operation;
@@ -307,7 +298,7 @@ fn expand_object(o: &Obj) -> Vec<Obj> {
         Tree::Node(op, _, children) if op.as_str() == PRODUCT_TYPE => {
             children.iter().flat_map(expand_object).collect()
         }
-        Tree::Node(op, _, children) if op.as_str() == CLOSURE_TYPE => {
+        Tree::Node(op, _, children) if op.as_str() == FN_HOM_TYPE => {
             children.iter().flat_map(expand_object).collect()
         }
         _ => vec![o.clone()],
@@ -320,7 +311,7 @@ fn map_objects(objects: &[Obj]) -> Vec<Obj> {
 
 fn forget_closures_in_object(object: &Obj) -> Vec<Obj> {
     match object {
-        Tree::Node(op, _, children) if op.as_str() == CLOSURE_TYPE => children
+        Tree::Node(op, _, children) if op.as_str() == FN_HOM_TYPE => children
             .iter()
             .flat_map(forget_closures_in_object)
             .collect(),
@@ -333,11 +324,11 @@ fn forget_closures_in_objects(objects: &[Obj]) -> Vec<Obj> {
 }
 
 fn closure_parts(o: &Obj) -> Option<(&Obj, &Obj)> {
-    parts(o, CLOSURE_TYPE)
+    parts(o, FN_HOM_TYPE)
 }
 
 fn function_parts(o: &Obj) -> Option<(&Obj, &Obj)> {
-    parts(o, FUNCTION_TYPE)
+    parts(o, FN_REF_TYPE)
 }
 
 fn value_wrapped_function_parts(o: &Obj) -> Option<(&Obj, &Obj)> {
@@ -458,7 +449,7 @@ mod tests {
         let d = object("d");
         let e = object("e");
         let closure = Tree::Node(
-            op(CLOSURE_TYPE),
+            op(FN_HOM_TYPE),
             0,
             vec![product(product(a, b), c), product(d, e)],
         );
@@ -480,12 +471,12 @@ mod tests {
             op(VALUE_TYPE),
             0,
             vec![Tree::Node(
-                op(FUNCTION_TYPE),
+                op(FN_REF_TYPE),
                 0,
                 vec![domain.clone(), c.clone()],
             )],
         );
-        let closure = Tree::Node(op(CLOSURE_TYPE), 0, vec![domain.clone(), c]);
+        let closure = Tree::Node(op(FN_HOM_TYPE), 0, vec![domain.clone(), c]);
 
         let mapped = map_lift(&[function], &[closure]);
         let eval_index = mapped

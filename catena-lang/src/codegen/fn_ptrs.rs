@@ -4,9 +4,10 @@ use hexpr::Operation;
 use open_hypergraphs::lax::NodeId;
 use thiserror::Error;
 
-use crate::{check::AnnotatedTerm, pass::record_boundary_sizes::OperationWithBoundarySizes};
-
-const NAME_PREFIX: &str = "name.";
+use crate::{
+    check::AnnotatedTerm, pass::record_boundary_sizes::OperationWithBoundarySizes,
+    stdlib::constants::NAME_PREFIX,
+};
 
 pub type FnPtrNodeMap = HashMap<NodeId, FnPtrSymbol>;
 

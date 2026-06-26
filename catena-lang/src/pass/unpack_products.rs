@@ -5,17 +5,15 @@ use open_hypergraphs::lax::{
     functor::{Functor, try_define_map_arrow},
 };
 
-use crate::{pass::PassError, report::TheoryTermMap};
+use crate::{
+    pass::PassError,
+    report::TheoryTermMap,
+    stdlib::constants::{
+        PRODUCT_ELIM, PRODUCT_INTRO, PRODUCT_TYPE, UNIT_ELIM, UNIT_INTRO, UNIT_TYPE,
+    },
+};
 
 pub type Obj = Tree<(), Operation>;
-
-const PRODUCT_TYPE: &str = "*";
-const UNIT_TYPE: &str = "1";
-
-const PRODUCT_INTRO: &str = "*.intro";
-const PRODUCT_ELIM: &str = "*.elim";
-const UNIT_INTRO: &str = "unit.intro";
-const UNIT_ELIM: &str = "unit.elim";
 
 #[derive(Clone, Copy, Debug, Default)]
 pub struct UnpackProducts;

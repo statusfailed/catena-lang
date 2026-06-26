@@ -13,6 +13,7 @@ use crate::{
     closure::convert::{ConvertError, Converted, ConvertedClosure, convert},
     elaborate::{ElaborateError, name_symbols},
     hexpr::{objects_to_hexpr, term_to_hexpr},
+    stdlib::constants::FN_HOM_TYPE,
 };
 
 const IF_OPS: &[&str] = &["if", "bool.if"];
@@ -253,7 +254,7 @@ fn is_closure_type(object: &Obj) -> bool {
     let Tree::Node(operation, _, children) = object else {
         return false;
     };
-    operation.as_str() == "=>" && children.len() == 2
+    operation.as_str() == FN_HOM_TYPE && children.len() == 2
 }
 
 fn op(name: &str) -> Operation {

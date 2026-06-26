@@ -15,7 +15,7 @@ use crate::{
         theory::convert_theory,
     },
     elaborate::elaborate,
-    stdlib,
+    stdlib::{self, constants::FN_HOM_TYPE},
 };
 
 #[test]
@@ -365,7 +365,7 @@ fn is_closure_type(object: &Obj) -> bool {
     let Tree::Node(operation, _, children) = object else {
         return false;
     };
-    operation.as_str() == "=>" && children.len() == 2
+    operation.as_str() == FN_HOM_TYPE && children.len() == 2
 }
 
 fn interface_types(term: &AnnotatedTerm, interface: &[NodeId]) -> Vec<Obj> {

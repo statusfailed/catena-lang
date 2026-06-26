@@ -10,6 +10,7 @@ use crate::{
     elaborate::ElaborateError,
     pass::{PassError, forget_closures::ForgetClosuresError},
     report::CompileReport,
+    stdlib::constants::FN_HOM_TYPE,
 };
 
 #[derive(Debug, Error)]
@@ -173,5 +174,5 @@ fn contains_closure_type_map(type_map: &OpenHypergraph<(), Operation>) -> bool {
         .hypergraph
         .edges
         .iter()
-        .any(|op| op.as_str() == "=>")
+        .any(|op| op.as_str() == FN_HOM_TYPE)
 }

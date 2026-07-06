@@ -11,8 +11,9 @@ use thiserror::Error;
 use crate::{
     check::{AnnotatedTerm, DefinitionTypes},
     closure::convert::{ConvertError, Converted, ConvertedClosure, convert},
-    elaborate::{ElaborateError, GENERATED_VARIABLE_PREFIX, name_symbols},
+    elaborate::{ElaborateError, name_symbols},
     hexpr::{objects_to_hexpr, term_to_hexpr},
+    prefixes::{GENERATED_COPY_PREFIX, GENERATED_VARIABLE_PREFIX},
     stdlib::constants::FN_HOM_TYPE,
 };
 
@@ -113,17 +114,18 @@ fn update_definition_arrow(
 
     let mut raw = original.raw.clone();
     raw.definition = Some(term_to_hexpr(&converted_definition));
-    let mut arrow = original.clone();
-    arrow.raw = raw;
-    arrow.definition = Some(converted_definition.map_nodes(|_| ()));
-    arrows.insert(definition_name.clone(), arrow);
-
     assert_eq!(
         original.type_maps.0.sources.len(),
         original.type_maps.1.sources.len(),
         "closure conversion expects original arrow type maps to share one context"
     );
     let ambient_context_arity = original.type_maps.0.sources.len();
+
+    insert_copy_arrows(syntax, arrows, &converted_definition, ambient_context_arity)?;
+    let mut arrow = original.clone();
+    arrow.raw = raw;
+    arrow.definition = Some(converted_definition.map_nodes(|_| ()));
+    arrows.insert(definition_name.clone(), arrow);
 
     for closure in converted.closures {
         insert_closure_arrows(
@@ -134,6 +136,48 @@ fn update_definition_arrow(
             ambient_context_arity,
             closure,
         )?;
+    }
+
+    Ok(())
+}
+
+fn insert_copy_arrows(
+    syntax: &Theory,
+    arrows: &mut BTreeMap<Operation, TheoryArrow>,
+    definition: &AnnotatedTerm,
+    ambient_context_arity: usize,
+) -> Result<(), ConvertTheoryError> {
+    for (operation, edge) in definition
+        .hypergraph
+        .edges
+        .iter()
+        .zip(&definition.hypergraph.adjacency)
+        .filter(|(operation, _)| operation.as_str().starts_with(GENERATED_COPY_PREFIX))
+    {
+        let raw_copy = RawTheoryArrow {
+            name: operation.clone(),
+            type_maps: (
+                objects_to_hexpr_in_context(
+                    &interface_types(definition, &edge.sources),
+                    ambient_context_arity,
+                ),
+                objects_to_hexpr_in_context(
+                    &interface_types(definition, &edge.targets),
+                    ambient_context_arity,
+                ),
+            ),
+            definition: None,
+        };
+        let copy_type_maps = interpret_type_maps(syntax, &raw_copy.type_maps)?;
+        arrows.insert(
+            operation.clone(),
+            TheoryArrow {
+                name: operation.clone(),
+                raw: raw_copy,
+                type_maps: copy_type_maps,
+                definition: None,
+            },
+        );
     }
 
     Ok(())
@@ -239,10 +283,30 @@ fn converted_primitive(operation: &Operation) -> Option<&'static str> {
 }
 
 fn type_maps_for_term(term: &AnnotatedTerm, ambient_context_arity: usize) -> (Hexpr, Hexpr) {
+    let source_types = interface_types(term, &term.sources);
+    let target_types = interface_types(term, &term.targets);
+    let context_arity = closure_context_arity(&source_types, &target_types, ambient_context_arity);
     (
-        objects_to_hexpr_in_context(&interface_types(term, &term.sources), ambient_context_arity),
-        objects_to_hexpr_in_context(&interface_types(term, &term.targets), ambient_context_arity),
+        objects_to_hexpr_in_context(&source_types, context_arity),
+        objects_to_hexpr_in_context(&target_types, context_arity),
     )
+}
+
+fn closure_context_arity(
+    source_types: &[Obj],
+    target_types: &[Obj],
+    ambient_context_arity: usize,
+) -> usize {
+    // Temporary precision hack: closed generated closures must stay nullary.
+    // Otherwise an `n`-indexed caller would make their generated `name.*`
+    // declarations expect `n`, while the replacement graph has no such input.
+    // Non-closed closures keep the broad ambient context until we remap sparse
+    // original leaf indices into a dense local context.
+    if leaf_indices(source_types).is_empty() && leaf_indices(target_types).is_empty() {
+        0
+    } else {
+        ambient_context_arity
+    }
 }
 
 fn objects_to_hexpr_in_context(objects: &[Obj], ambient_context_arity: usize) -> Hexpr {

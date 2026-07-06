@@ -1,4 +1,4 @@
-use hexpr::Operation;
+use hexpr::{Hexpr, Operation};
 use metacat::{
     theory::{RawTheorySet, Theory, TheoryId, TheorySet},
     tree::Tree,
@@ -15,6 +15,7 @@ use crate::{
         theory::convert_theory,
     },
     elaborate::elaborate,
+    prefixes::GENERATED_COPY_PREFIX,
     stdlib::{
         self,
         constants::{FN_HOM_TYPE, PRODUCT_TYPE, UNIT_TYPE},
@@ -156,7 +157,7 @@ fn deferred_bool_id_closure_converts_through_each_stage() {
     // val(bool) ● (val(bool) * 1 -> val(bool))
     assert_converted_definition(
         &converted.definition,
-        4,
+        5,
         vec![obj("val", vec![obj("bool", vec![])])],
         vec![
             obj("val", vec![obj("bool", vec![])]),
@@ -165,6 +166,19 @@ fn deferred_bool_id_closure_converts_through_each_stage() {
                 vec![obj("val", vec![obj("bool", vec![])])],
             ),
         ],
+    );
+    assert!(
+        converted
+            .definition
+            .hypergraph
+            .edges
+            .iter()
+            .any(|operation| operation.as_str()
+                == format!(
+                    "{GENERATED_COPY_PREFIX}closure.run-bool-id.{}.0",
+                    original_target.0
+                )),
+        "converted definition should split the captured environment before naming the closure"
     );
 
     // Verify that original definition uses the *name* of the closure conversion
@@ -243,6 +257,118 @@ fn closure_body_unpacker_reproduces_product_typed_environment_wires() {
 }
 
 #[test]
+fn converted_closure_name_keeps_free_variable_input() {
+    // Build the smallest closure region that depends on a free variable.
+    //
+    // The hand-built `name.manual-ix-n-to-u64` edge stands for a named closure
+    // family indexed by `n`. Supplying the free length parameter `n` produces a
+    // concrete closure of type `ix n => u64`.
+    //
+    // Types used in the hand-built graph:
+    //
+    //   n            type-level length parameter
+    //   val(ix n)    runtime index into a collection of length n
+    //   val(u64)     runtime u64 output
+    //   ix n => u64  closure returned by name.manual-ix-n-to-u64
+    let length_parameter_n = Tree::Leaf(0, ());
+    let index_value_at_n = obj("val", vec![obj("ix", vec![length_parameter_n.clone()])]);
+    let u64_value = obj("val", vec![obj("u64", vec![])]);
+    let producer_closure_type = obj(
+        FN_HOM_TYPE,
+        vec![index_value_at_n.clone(), u64_value.clone()],
+    );
+
+    // Wires and edges:
+    //
+    //   n -- name.manual-ix-n-to-u64 --> (ix n => u64)
+    //
+    // `free_n` indexes which closure name should be produced. Therefore the
+    // replacement `name.closure.reduce-n.*` must still receive `free_n`.
+    let mut definition = AnnotatedTerm::empty();
+    let free_n = definition.new_node(length_parameter_n);
+    let closure = definition.new_node(producer_closure_type);
+
+    definition.new_edge(op("name.manual-ix-n-to-u64"), (vec![free_n], vec![closure]));
+    definition.sources = vec![free_n];
+    definition.targets = vec![closure];
+
+    let constructed = crate::hexpr::term_to_hexpr(&definition);
+    let expected_construction: Hexpr =
+        "([w0 . ] ([ . w0] name.manual-ix-n-to-u64 [w1 . ]) [ . w1])"
+            .parse()
+            .expect("expected constructed definition Hexpr should parse");
+    assert_eq!(
+        constructed, expected_construction,
+        "test setup should construct w0=n |- name.manual-ix-n-to-u64"
+    );
+
+    // Closure conversion replaces the closure-producing region with an explicit
+    // environment and a generated closure name. Since the manual closure name
+    // depended on `n`, the generated `name.closure.reduce-n.*` must preserve the
+    // same dependency instead of becoming nullary.
+    let converted =
+        convert(&op("reduce-n"), &definition, &[closure]).expect("conversion should succeed");
+    let generated_closure = converted
+        .closures
+        .first()
+        .expect("conversion should generate a closure body");
+    assert_eq!(
+        interface_types(&generated_closure.term, &generated_closure.term.sources),
+        vec![
+            Tree::Leaf(0, ()),
+            obj("val", vec![obj("ix", vec![Tree::Leaf(0, ())])])
+        ],
+        "generated closure body should still depend on free variable n"
+    );
+
+    let mut converted_definition = converted.definition.clone();
+    converted_definition
+        .quotient()
+        .expect("quotient should succeed");
+
+    let converted_hexpr = crate::hexpr::term_to_hexpr(&converted_definition);
+    let expected_converted: Hexpr = format!(
+        "([w0 . ] ([ . w0] {GENERATED_COPY_PREFIX}closure.reduce-n.1.0 [w1 w2 . ]) \
+         ([ . w2] name.closure.reduce-n.1 [w3 . ]) [ . w1 w3])"
+    )
+    .as_str()
+    .parse()
+    .expect("expected converted definition Hexpr should parse");
+    assert_eq!(
+        converted_hexpr, expected_converted,
+        "closure conversion should split n, keep one copy as the environment, \
+         and pass the other copy to the generated closure name"
+    );
+
+    let name_edge = converted_definition
+        .hypergraph
+        .edges
+        .iter()
+        .zip(&converted_definition.hypergraph.adjacency)
+        .find(|(operation, _)| operation.as_str().starts_with("name.closure.reduce-n."))
+        .map(|(_, edge)| edge)
+        .expect("converted definition should generate a closure name edge");
+
+    // `name.closure.reduce-n.*` should no longer be nullary: it receives the
+    // copied `n` input produced by the split above, and returns only the
+    // function pointer. The environment remains the other split output.
+    assert_eq!(
+        name_edge
+            .sources
+            .iter()
+            .map(|node| converted_definition.hypergraph.nodes[node.0].clone())
+            .collect::<Vec<_>>(),
+        vec![Tree::Leaf(0, ())],
+        "generated closure name should consume the free variable n"
+    );
+    assert_eq!(
+        name_edge.targets,
+        vec![converted_definition.targets[1]],
+        "generated closure name should only produce the function pointer"
+    );
+}
+
+#[test]
 fn theory_conversion_converts_if_closure_arguments() {
     let (theory_set, definition_types) = theories_with(
         r#"
@@ -256,6 +382,27 @@ fn theory_conversion_converts_if_closure_arguments() {
 
     let converted =
         convert_theory(&theory_set, &definition_types, &program).expect("theory should convert");
+    let mut converted_set = theory_set.clone();
+    converted_set
+        .theories
+        .insert(program.clone(), converted.clone());
+    let converted_definition_types =
+        check(&converted_set).expect("converted theory should still typecheck");
+    let forgotten = crate::pass::forget_closures::run(&converted_set, &converted_definition_types)
+        .expect("forget-closures should erase converted closure structure");
+    let forgotten_if_id_neg = forgotten
+        .get(&program)
+        .and_then(|definitions| definitions.get(&op("if-id-neg")))
+        .expect("forgotten closures should include converted if-id-neg");
+    assert!(
+        forgotten_if_id_neg
+            .hypergraph
+            .edges
+            .iter()
+            .all(|operation| !operation.as_str().starts_with(GENERATED_COPY_PREFIX)),
+        "copy.closure.* should be erased before codegen"
+    );
+
     let Theory::Theory { arrows, .. } = converted else {
         panic!("program should be a theory");
     };
@@ -504,6 +651,37 @@ fn theory_conversion_converts_reduce_closure_arguments() {
             "converted reduce-ones should refer to {name_closure_name}"
         );
     }
+}
+
+#[test]
+fn theory_conversion_declares_context_dependent_copy_arrows() {
+    let (theory_set, definition_types) = theories_with(
+        r#"
+        (def program diagonal-view :
+          ([n.] ([.n] ix val))
+          ->
+          ([n.] (u64 val))
+        = ([i.] u64.one))
+
+        (def program reduce-diagonal :
+          ([n.] {({[.n] u64} :) ({[.n] u64} :)})
+          ->
+          ([n.] (u64 val))
+        = ([producer-len reduce-len.]
+          {
+            const.u64.0x0000000000000000
+            (name.u64.add lift)
+            (([.producer-len] :.param) name.diagonal-view lift)
+            [.reduce-len]
+          }
+          reduce
+        ))
+        "#,
+    );
+    let program = TheoryId(op("program"));
+
+    convert_theory(&theory_set, &definition_types, &program)
+        .expect("generated copy arrows with n-dependent types should share the ambient context");
 }
 
 #[test]

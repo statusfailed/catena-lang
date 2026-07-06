@@ -16,10 +16,11 @@ use thiserror::Error;
 use crate::{
     check::{AnnotatedTerm, DefinitionTypes},
     nonstrict::{to_flatteners, to_unflatteners, unpack_packed_object},
+    prefixes::{GENERATED_COPY_PREFIX, NAME_PREFIX},
     report::TheoryTermMap,
     stdlib::constants::{
-        COMPOSE, DEFER, EVAL, FN_HOM_TYPE, FN_REF_TYPE, LIFT, NAME_PREFIX, PRODUCT_TYPE, RUN,
-        TENSOR, UNIT_TYPE, VALUE_TYPE,
+        COMPOSE, DEFER, EVAL, FN_HOM_TYPE, FN_REF_TYPE, LIFT, PRODUCT_TYPE, RUN, TENSOR, UNIT_TYPE,
+        VALUE_TYPE,
     },
 };
 
@@ -98,6 +99,10 @@ impl Functor<Obj, Arr, Obj, Arr> for ForgetClosures<'_> {
             return map_name_operation(self.theory, name, source, target);
         }
 
+        if a.as_str().starts_with(GENERATED_COPY_PREFIX) {
+            return map_copy_closure_operation(source, target);
+        }
+
         match a.as_str() {
             DEFER | RUN => OpenHypergraph::identity(map_objects(source)),
             COMPOSE => map_compose(source),
@@ -150,6 +155,17 @@ fn typed_definition(
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Action of forget_closures on generating operations
+
+fn map_copy_closure_operation(source: &[Obj], target: &[Obj]) -> OpenHypergraph<Obj, Arr> {
+    let mapped_source = map_objects(source);
+    let mapped_target = map_objects(target);
+    assert_eq!(
+        mapped_target,
+        [mapped_source.clone(), mapped_source.clone()].concat(),
+        "copy.closure.* should duplicate its source boundary"
+    );
+    duplicate_outputs(&mapped_source)
+}
 
 // name.* operations map to the original operation, plus packers, with input wires 'bent around'
 fn map_name_operation(

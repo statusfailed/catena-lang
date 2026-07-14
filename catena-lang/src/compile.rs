@@ -46,7 +46,7 @@ pub enum CompileError {
     Codegen(#[from] CodegenError),
 }
 
-// TODO: Write a function `compile` which:
+// Compile:
 //
 // - Elaborates input to include function names (finitary CMC)
 // - Typechecks
@@ -54,14 +54,6 @@ pub enum CompileError {
 // - Renders GPU source artifacts
 // - Produces a CompileReport which contains all intermediate data, including graphs rendered with
 //   open-hypergraphs-dot for each definition + the result of each pass.
-//
-// NOTE: *definitions* will never be inlined.
-//
-// At each stage, write debug output to an (optionally supplied) directory.
-// Choose meaningful names for each file; render SVGs of terms where possible.
-// Provide a top-level HTML file
-//
-// This should
 
 /// Compile all definitions from the input raw theories and collect intermediate data.
 pub fn compile(raw_theories: RawTheorySet) -> Result<CompileReport, CompileFailure> {
@@ -110,6 +102,11 @@ fn compile_into(report: &mut CompileReport) -> Result<(), CompileError> {
     report.forgotten_closures = Some(forgotten_closures.clone());
 
     return Err(CompileError::NotImplementedError);
+
+    // TODO:
+    //  1. Inline ({_ name.f} eval) for all inlined definitions - replace this hexpr with body of f directly
+    //  2. Replace !closure regions with env + fn pointer + 'closure context' box
+    //  3. Uncomment remaining phases below
 
     // let boundary_sizes = crate::pass::record_boundary_sizes::run(&forgotten_closures)?;
     // report.boundary_sizes = Some(boundary_sizes.clone());

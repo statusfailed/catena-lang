@@ -11,6 +11,9 @@ struct Cli {
 
     #[arg(short, long)]
     output_dir: PathBuf,
+
+    #[arg(long)]
+    no_svg: bool,
 }
 
 fn main() -> anyhow::Result<()> {
@@ -25,11 +28,13 @@ fn main() -> anyhow::Result<()> {
     let raw_theories = RawTheorySet::from_texts(all_sources)?;
     match catena_lang::compile::compile(raw_theories) {
         Ok(report) => {
-            report.dump_to_dir(&cli.output_dir)?;
+            report.dump_to_dir_with_svg(&cli.output_dir, !cli.no_svg)?;
             Ok(())
         }
         Err(failure) => {
-            failure.report.dump_to_dir(&cli.output_dir)?;
+            failure
+                .report
+                .dump_to_dir_with_svg(&cli.output_dir, !cli.no_svg)?;
             Err(failure.into())
         }
     }

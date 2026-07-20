@@ -175,10 +175,19 @@ impl Runtime {
         name: &str,
         args: [Value; M],
     ) -> Result<[Value; N], ExecError> {
+        self.exec_borrowed(name, &args)
+    }
+
+    /// Run a source-level `program` definition without consuming its arguments.
+    pub fn exec_borrowed<const M: usize, const N: usize>(
+        &self,
+        name: &str,
+        args: &[Value; M],
+    ) -> Result<[Value; N], ExecError> {
         let symbol = self
             .symbol(name)
             .ok_or_else(|| ExecError::UnknownSourceFunction(name.to_string()))?;
-        self.exec_symbol(symbol, args)
+        self.exec_symbol_borrowed(symbol, args)
     }
 
     /// Run the generated C symbol, which must have M arguments, and return its N arguments.
@@ -186,6 +195,15 @@ impl Runtime {
         &self,
         symbol: &str,
         args: [Value; M],
+    ) -> Result<[Value; N], ExecError> {
+        self.exec_symbol_borrowed(symbol, &args)
+    }
+
+    /// Run a generated C symbol without consuming its arguments.
+    pub fn exec_symbol_borrowed<const M: usize, const N: usize>(
+        &self,
+        symbol: &str,
+        args: &[Value; M],
     ) -> Result<[Value; N], ExecError> {
         let signature = self
             .signatures

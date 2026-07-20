@@ -1,3 +1,3 @@
 #!/usr/bin/env bash
 
-cargo run -- $1 --output-dir report
+cargo run -- "$1" --output-dir report --no-svg

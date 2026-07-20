@@ -49,6 +49,14 @@ impl CompileReport {
 
 impl CompileReport {
     pub fn dump_graphs_to_dir(&self, dir: impl AsRef<Path>) -> io::Result<()> {
+        self.dump_graphs_to_dir_with_svg(dir, true)
+    }
+
+    pub fn dump_graphs_to_dir_with_svg(
+        &self,
+        dir: impl AsRef<Path>,
+        include_svg: bool,
+    ) -> io::Result<()> {
         let dir = dir.as_ref();
         fs::create_dir_all(dir)?;
         fs::write(
@@ -56,13 +64,19 @@ impl CompileReport {
             self.raw_theories.to_hexpr_text(),
         )?;
         elaboration::dump_elaboration(self, dir)?;
-        svg::dump_svgs(self, &dir.join("svgs"))?;
+        if include_svg {
+            svg::dump_svgs(self, &dir.join("svgs"))?;
+        }
         Ok(())
     }
 
     pub fn dump_to_dir(&self, dir: impl AsRef<Path>) -> io::Result<()> {
+        self.dump_to_dir_with_svg(dir, true)
+    }
+
+    pub fn dump_to_dir_with_svg(&self, dir: impl AsRef<Path>, include_svg: bool) -> io::Result<()> {
         let dir = dir.as_ref();
-        self.dump_graphs_to_dir(dir)?;
+        self.dump_graphs_to_dir_with_svg(dir, include_svg)?;
         gpu::dump_gpu(self, &dir.join("gpu"))?;
         Ok(())
     }

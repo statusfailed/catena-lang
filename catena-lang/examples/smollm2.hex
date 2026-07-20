@@ -1,0 +1,2106 @@
+# Top-level SmolLM2-1.7B forward pass.
+#
+# Every model tensor is an explicit input. The token-embedding matrix is used
+# both by the embedding lookup and, because SmolLM2 ties its embeddings, by the
+# language-model head. Each decoder layer applies the same program to distinct
+# weights.
+
+(def program smollm2.forward :
+  ([n h q v i.] {
+    (cap.ref mem) # token IDs
+    (cap.ref mem) # shared token-embedding / language-model-head weight
+    ({[.n] u64} :) # token count
+    ({[.h] u64} :) # attention heads
+    ({[.q] u64} :) # channels per attention head
+    ({({[.h] [.q]} *) u64} :) # hidden size
+    ({[.v] u64} :) # vocabulary size
+    ({({[.n] ({[.h] [.q]} *)} *) u64} :) # tokens * hidden size
+    ({({[.v] ({[.h] [.q]} *)} *) u64} :) # vocabulary size * hidden size
+    ({({[.n] [.v]} *) u64} :) # tokens * vocabulary size
+    ({[.i] u64} :) # MLP intermediate size
+    ({({[.n] [.i]} *) u64} :) # tokens * intermediate size
+    ({({({[.h] [.q]} *) ({[.h] [.q]} *)} *) u64} :) # hidden projection weight size
+    ({({[.i] ({[.h] [.q]} *)} *) u64} :) # MLP rectangular weight size
+    ({({({[.h] [.q]} *) [.i]} *) u64} :) # MLP down-projection weight size
+    # decoder layer 00
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    # decoder layer 01
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    # decoder layer 02
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    # decoder layer 03
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    # decoder layer 04
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    # decoder layer 05
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    # decoder layer 06
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    # decoder layer 07
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    # decoder layer 08
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    # decoder layer 09
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    # decoder layer 10
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    # decoder layer 11
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    # decoder layer 12
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    # decoder layer 13
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    # decoder layer 14
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    # decoder layer 15
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    # decoder layer 16
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    # decoder layer 17
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    # decoder layer 18
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    # decoder layer 19
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    # decoder layer 20
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    # decoder layer 21
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    # decoder layer 22
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    # decoder layer 23
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem) # final RMSNorm weight
+  })
+  ->
+  ([n h q v i.] (cap.own mem))
+= ([
+  token-ids
+  token-embedding
+  n-len
+  h-len
+  q-len
+  d-len
+  v-len
+  nd-len
+  vd-len
+  nv-len
+  i-len
+  ni-len
+  dd-len
+  id-len
+  di-len
+  # decoder layer 00
+  layer-00-input-norm
+  layer-00-query
+  layer-00-key
+  layer-00-value
+  layer-00-attention-output
+  layer-00-post-attention-norm
+  layer-00-mlp-gate
+  layer-00-mlp-up
+  layer-00-mlp-down
+  # decoder layer 01
+  layer-01-input-norm
+  layer-01-query
+  layer-01-key
+  layer-01-value
+  layer-01-attention-output
+  layer-01-post-attention-norm
+  layer-01-mlp-gate
+  layer-01-mlp-up
+  layer-01-mlp-down
+  # decoder layer 02
+  layer-02-input-norm
+  layer-02-query
+  layer-02-key
+  layer-02-value
+  layer-02-attention-output
+  layer-02-post-attention-norm
+  layer-02-mlp-gate
+  layer-02-mlp-up
+  layer-02-mlp-down
+  # decoder layer 03
+  layer-03-input-norm
+  layer-03-query
+  layer-03-key
+  layer-03-value
+  layer-03-attention-output
+  layer-03-post-attention-norm
+  layer-03-mlp-gate
+  layer-03-mlp-up
+  layer-03-mlp-down
+  # decoder layer 04
+  layer-04-input-norm
+  layer-04-query
+  layer-04-key
+  layer-04-value
+  layer-04-attention-output
+  layer-04-post-attention-norm
+  layer-04-mlp-gate
+  layer-04-mlp-up
+  layer-04-mlp-down
+  # decoder layer 05
+  layer-05-input-norm
+  layer-05-query
+  layer-05-key
+  layer-05-value
+  layer-05-attention-output
+  layer-05-post-attention-norm
+  layer-05-mlp-gate
+  layer-05-mlp-up
+  layer-05-mlp-down
+  # decoder layer 06
+  layer-06-input-norm
+  layer-06-query
+  layer-06-key
+  layer-06-value
+  layer-06-attention-output
+  layer-06-post-attention-norm
+  layer-06-mlp-gate
+  layer-06-mlp-up
+  layer-06-mlp-down
+  # decoder layer 07
+  layer-07-input-norm
+  layer-07-query
+  layer-07-key
+  layer-07-value
+  layer-07-attention-output
+  layer-07-post-attention-norm
+  layer-07-mlp-gate
+  layer-07-mlp-up
+  layer-07-mlp-down
+  # decoder layer 08
+  layer-08-input-norm
+  layer-08-query
+  layer-08-key
+  layer-08-value
+  layer-08-attention-output
+  layer-08-post-attention-norm
+  layer-08-mlp-gate
+  layer-08-mlp-up
+  layer-08-mlp-down
+  # decoder layer 09
+  layer-09-input-norm
+  layer-09-query
+  layer-09-key
+  layer-09-value
+  layer-09-attention-output
+  layer-09-post-attention-norm
+  layer-09-mlp-gate
+  layer-09-mlp-up
+  layer-09-mlp-down
+  # decoder layer 10
+  layer-10-input-norm
+  layer-10-query
+  layer-10-key
+  layer-10-value
+  layer-10-attention-output
+  layer-10-post-attention-norm
+  layer-10-mlp-gate
+  layer-10-mlp-up
+  layer-10-mlp-down
+  # decoder layer 11
+  layer-11-input-norm
+  layer-11-query
+  layer-11-key
+  layer-11-value
+  layer-11-attention-output
+  layer-11-post-attention-norm
+  layer-11-mlp-gate
+  layer-11-mlp-up
+  layer-11-mlp-down
+  # decoder layer 12
+  layer-12-input-norm
+  layer-12-query
+  layer-12-key
+  layer-12-value
+  layer-12-attention-output
+  layer-12-post-attention-norm
+  layer-12-mlp-gate
+  layer-12-mlp-up
+  layer-12-mlp-down
+  # decoder layer 13
+  layer-13-input-norm
+  layer-13-query
+  layer-13-key
+  layer-13-value
+  layer-13-attention-output
+  layer-13-post-attention-norm
+  layer-13-mlp-gate
+  layer-13-mlp-up
+  layer-13-mlp-down
+  # decoder layer 14
+  layer-14-input-norm
+  layer-14-query
+  layer-14-key
+  layer-14-value
+  layer-14-attention-output
+  layer-14-post-attention-norm
+  layer-14-mlp-gate
+  layer-14-mlp-up
+  layer-14-mlp-down
+  # decoder layer 15
+  layer-15-input-norm
+  layer-15-query
+  layer-15-key
+  layer-15-value
+  layer-15-attention-output
+  layer-15-post-attention-norm
+  layer-15-mlp-gate
+  layer-15-mlp-up
+  layer-15-mlp-down
+  # decoder layer 16
+  layer-16-input-norm
+  layer-16-query
+  layer-16-key
+  layer-16-value
+  layer-16-attention-output
+  layer-16-post-attention-norm
+  layer-16-mlp-gate
+  layer-16-mlp-up
+  layer-16-mlp-down
+  # decoder layer 17
+  layer-17-input-norm
+  layer-17-query
+  layer-17-key
+  layer-17-value
+  layer-17-attention-output
+  layer-17-post-attention-norm
+  layer-17-mlp-gate
+  layer-17-mlp-up
+  layer-17-mlp-down
+  # decoder layer 18
+  layer-18-input-norm
+  layer-18-query
+  layer-18-key
+  layer-18-value
+  layer-18-attention-output
+  layer-18-post-attention-norm
+  layer-18-mlp-gate
+  layer-18-mlp-up
+  layer-18-mlp-down
+  # decoder layer 19
+  layer-19-input-norm
+  layer-19-query
+  layer-19-key
+  layer-19-value
+  layer-19-attention-output
+  layer-19-post-attention-norm
+  layer-19-mlp-gate
+  layer-19-mlp-up
+  layer-19-mlp-down
+  # decoder layer 20
+  layer-20-input-norm
+  layer-20-query
+  layer-20-key
+  layer-20-value
+  layer-20-attention-output
+  layer-20-post-attention-norm
+  layer-20-mlp-gate
+  layer-20-mlp-up
+  layer-20-mlp-down
+  # decoder layer 21
+  layer-21-input-norm
+  layer-21-query
+  layer-21-key
+  layer-21-value
+  layer-21-attention-output
+  layer-21-post-attention-norm
+  layer-21-mlp-gate
+  layer-21-mlp-up
+  layer-21-mlp-down
+  # decoder layer 22
+  layer-22-input-norm
+  layer-22-query
+  layer-22-key
+  layer-22-value
+  layer-22-attention-output
+  layer-22-post-attention-norm
+  layer-22-mlp-gate
+  layer-22-mlp-up
+  layer-22-mlp-down
+  # decoder layer 23
+  layer-23-input-norm
+  layer-23-query
+  layer-23-key
+  layer-23-value
+  layer-23-attention-output
+  layer-23-post-attention-norm
+  layer-23-mlp-gate
+  layer-23-mlp-up
+  layer-23-mlp-down
+  final-norm
+.]
+  ({[.token-ids token-embedding n-len d-len v-len nd-len vd-len]}
+    smollm2.embed-tokens [hidden-00.])
+
+  ({[.hidden-00 layer-00-input-norm layer-00-query layer-00-key layer-00-value layer-00-attention-output layer-00-post-attention-norm layer-00-mlp-gate layer-00-mlp-up layer-00-mlp-down n-len h-len q-len d-len i-len nd-len ni-len dd-len id-len di-len]} smollm2.decoder-layer [hidden-01.])
+  ({[.hidden-01 layer-01-input-norm layer-01-query layer-01-key layer-01-value layer-01-attention-output layer-01-post-attention-norm layer-01-mlp-gate layer-01-mlp-up layer-01-mlp-down n-len h-len q-len d-len i-len nd-len ni-len dd-len id-len di-len]} smollm2.decoder-layer [hidden-02.])
+  ({[.hidden-02 layer-02-input-norm layer-02-query layer-02-key layer-02-value layer-02-attention-output layer-02-post-attention-norm layer-02-mlp-gate layer-02-mlp-up layer-02-mlp-down n-len h-len q-len d-len i-len nd-len ni-len dd-len id-len di-len]} smollm2.decoder-layer [hidden-03.])
+  ({[.hidden-03 layer-03-input-norm layer-03-query layer-03-key layer-03-value layer-03-attention-output layer-03-post-attention-norm layer-03-mlp-gate layer-03-mlp-up layer-03-mlp-down n-len h-len q-len d-len i-len nd-len ni-len dd-len id-len di-len]} smollm2.decoder-layer [hidden-04.])
+  ({[.hidden-04 layer-04-input-norm layer-04-query layer-04-key layer-04-value layer-04-attention-output layer-04-post-attention-norm layer-04-mlp-gate layer-04-mlp-up layer-04-mlp-down n-len h-len q-len d-len i-len nd-len ni-len dd-len id-len di-len]} smollm2.decoder-layer [hidden-05.])
+  ({[.hidden-05 layer-05-input-norm layer-05-query layer-05-key layer-05-value layer-05-attention-output layer-05-post-attention-norm layer-05-mlp-gate layer-05-mlp-up layer-05-mlp-down n-len h-len q-len d-len i-len nd-len ni-len dd-len id-len di-len]} smollm2.decoder-layer [hidden-06.])
+  ({[.hidden-06 layer-06-input-norm layer-06-query layer-06-key layer-06-value layer-06-attention-output layer-06-post-attention-norm layer-06-mlp-gate layer-06-mlp-up layer-06-mlp-down n-len h-len q-len d-len i-len nd-len ni-len dd-len id-len di-len]} smollm2.decoder-layer [hidden-07.])
+  ({[.hidden-07 layer-07-input-norm layer-07-query layer-07-key layer-07-value layer-07-attention-output layer-07-post-attention-norm layer-07-mlp-gate layer-07-mlp-up layer-07-mlp-down n-len h-len q-len d-len i-len nd-len ni-len dd-len id-len di-len]} smollm2.decoder-layer [hidden-08.])
+  ({[.hidden-08 layer-08-input-norm layer-08-query layer-08-key layer-08-value layer-08-attention-output layer-08-post-attention-norm layer-08-mlp-gate layer-08-mlp-up layer-08-mlp-down n-len h-len q-len d-len i-len nd-len ni-len dd-len id-len di-len]} smollm2.decoder-layer [hidden-09.])
+  ({[.hidden-09 layer-09-input-norm layer-09-query layer-09-key layer-09-value layer-09-attention-output layer-09-post-attention-norm layer-09-mlp-gate layer-09-mlp-up layer-09-mlp-down n-len h-len q-len d-len i-len nd-len ni-len dd-len id-len di-len]} smollm2.decoder-layer [hidden-10.])
+  ({[.hidden-10 layer-10-input-norm layer-10-query layer-10-key layer-10-value layer-10-attention-output layer-10-post-attention-norm layer-10-mlp-gate layer-10-mlp-up layer-10-mlp-down n-len h-len q-len d-len i-len nd-len ni-len dd-len id-len di-len]} smollm2.decoder-layer [hidden-11.])
+  ({[.hidden-11 layer-11-input-norm layer-11-query layer-11-key layer-11-value layer-11-attention-output layer-11-post-attention-norm layer-11-mlp-gate layer-11-mlp-up layer-11-mlp-down n-len h-len q-len d-len i-len nd-len ni-len dd-len id-len di-len]} smollm2.decoder-layer [hidden-12.])
+  ({[.hidden-12 layer-12-input-norm layer-12-query layer-12-key layer-12-value layer-12-attention-output layer-12-post-attention-norm layer-12-mlp-gate layer-12-mlp-up layer-12-mlp-down n-len h-len q-len d-len i-len nd-len ni-len dd-len id-len di-len]} smollm2.decoder-layer [hidden-13.])
+  ({[.hidden-13 layer-13-input-norm layer-13-query layer-13-key layer-13-value layer-13-attention-output layer-13-post-attention-norm layer-13-mlp-gate layer-13-mlp-up layer-13-mlp-down n-len h-len q-len d-len i-len nd-len ni-len dd-len id-len di-len]} smollm2.decoder-layer [hidden-14.])
+  ({[.hidden-14 layer-14-input-norm layer-14-query layer-14-key layer-14-value layer-14-attention-output layer-14-post-attention-norm layer-14-mlp-gate layer-14-mlp-up layer-14-mlp-down n-len h-len q-len d-len i-len nd-len ni-len dd-len id-len di-len]} smollm2.decoder-layer [hidden-15.])
+  ({[.hidden-15 layer-15-input-norm layer-15-query layer-15-key layer-15-value layer-15-attention-output layer-15-post-attention-norm layer-15-mlp-gate layer-15-mlp-up layer-15-mlp-down n-len h-len q-len d-len i-len nd-len ni-len dd-len id-len di-len]} smollm2.decoder-layer [hidden-16.])
+  ({[.hidden-16 layer-16-input-norm layer-16-query layer-16-key layer-16-value layer-16-attention-output layer-16-post-attention-norm layer-16-mlp-gate layer-16-mlp-up layer-16-mlp-down n-len h-len q-len d-len i-len nd-len ni-len dd-len id-len di-len]} smollm2.decoder-layer [hidden-17.])
+  ({[.hidden-17 layer-17-input-norm layer-17-query layer-17-key layer-17-value layer-17-attention-output layer-17-post-attention-norm layer-17-mlp-gate layer-17-mlp-up layer-17-mlp-down n-len h-len q-len d-len i-len nd-len ni-len dd-len id-len di-len]} smollm2.decoder-layer [hidden-18.])
+  ({[.hidden-18 layer-18-input-norm layer-18-query layer-18-key layer-18-value layer-18-attention-output layer-18-post-attention-norm layer-18-mlp-gate layer-18-mlp-up layer-18-mlp-down n-len h-len q-len d-len i-len nd-len ni-len dd-len id-len di-len]} smollm2.decoder-layer [hidden-19.])
+  ({[.hidden-19 layer-19-input-norm layer-19-query layer-19-key layer-19-value layer-19-attention-output layer-19-post-attention-norm layer-19-mlp-gate layer-19-mlp-up layer-19-mlp-down n-len h-len q-len d-len i-len nd-len ni-len dd-len id-len di-len]} smollm2.decoder-layer [hidden-20.])
+  ({[.hidden-20 layer-20-input-norm layer-20-query layer-20-key layer-20-value layer-20-attention-output layer-20-post-attention-norm layer-20-mlp-gate layer-20-mlp-up layer-20-mlp-down n-len h-len q-len d-len i-len nd-len ni-len dd-len id-len di-len]} smollm2.decoder-layer [hidden-21.])
+  ({[.hidden-21 layer-21-input-norm layer-21-query layer-21-key layer-21-value layer-21-attention-output layer-21-post-attention-norm layer-21-mlp-gate layer-21-mlp-up layer-21-mlp-down n-len h-len q-len d-len i-len nd-len ni-len dd-len id-len di-len]} smollm2.decoder-layer [hidden-22.])
+  ({[.hidden-22 layer-22-input-norm layer-22-query layer-22-key layer-22-value layer-22-attention-output layer-22-post-attention-norm layer-22-mlp-gate layer-22-mlp-up layer-22-mlp-down n-len h-len q-len d-len i-len nd-len ni-len dd-len id-len di-len]} smollm2.decoder-layer [hidden-23.])
+  ({[.hidden-23 layer-23-input-norm layer-23-query layer-23-key layer-23-value layer-23-attention-output layer-23-post-attention-norm layer-23-mlp-gate layer-23-mlp-up layer-23-mlp-down n-len h-len q-len d-len i-len nd-len ni-len dd-len id-len di-len]} smollm2.decoder-layer [hidden-24.])
+
+  ({[.hidden-24 final-norm n-len d-len nd-len]}
+    smollm2.rmsnorm [normalized.])
+  ({[.normalized token-embedding n-len v-len d-len nd-len vd-len nv-len]}
+    smollm2.language-model-head)
+))
+
+# RoPE frequency for one token position and one channel within a 64-wide head.
+# The upper half repeats the lower-half frequencies, matching Llama's
+# rotate-half formulation. 130000 is SmolLM2's rope_theta.
+(def program smollm2.rope-angle :
+  {(u64 val) (u64 val)}
+  ->
+  (f32 val)
+= ([position channel.]
+  (const.u64.0x0000000000000020 [half-head-width.])
+  (const.u64.0x0000000000000040 [head-width.])
+  (const.u32.0x40000000 u32.bitcast-f32 [two.])
+  (const.u32.0x413C6796 u32.bitcast-f32 [ln-rope-theta.])
+  ({[.channel] [.half-head-width]} u64.sub [channel-minus-half.]
+    ({[.channel] [.half-head-width]} u64.lt [in-first-half.]
+      ({[.in-first-half] [.channel] [.channel-minus-half]}
+          u64.select [frequency-channel.]
+          ([.position] u64.to-f32 [position-f32.]
+            ([.frequency-channel] u64.to-f32 [frequency-channel-f32.]
+              ([.head-width] u64.to-f32 [head-width-f32.]
+                ({[.two] [.frequency-channel-f32]} f32.mul [twice-channel.]
+                  ({[.twice-channel] [.head-width-f32]} f32.div [channel-ratio.]
+                    ({[.channel-ratio] [.ln-rope-theta]} f32.mul [log-frequency.]
+                      ([.log-frequency] f32.neg [negative-log-frequency.]
+                        ([.negative-log-frequency] smollm2.exp-approx [frequency.]
+                          ({[.position-f32] [.frequency]} f32.mul)
+                        )
+                      )
+                    )
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+  )
+))
+
+# Four-term sine/cosine kernels evaluated only after quadrant reduction.
+(def program smollm2.sin-reduced :
+  (f32 val)
+  ->
+  (f32 val)
+= ([x.]
+  ({[.x] [.x]} f32.mul [x2.]
+    ({[.x2] [.x]} f32.mul [x3.]
+      ({[.x3] [.x2]} f32.mul [x5.]
+        ({[.x5] [.x2]} f32.mul [x7.]
+          (const.u32.0x40C00000 u32.bitcast-f32 [six.])
+          (const.u32.0x42F00000 u32.bitcast-f32 [one-twenty.])
+          (const.u32.0x459D8000 u32.bitcast-f32 [five-thousand-forty.])
+          ({[.x3] [.six]} f32.div [third-order.]
+            ({[.x5] [.one-twenty]} f32.div [fifth-order.]
+              ({[.x7] [.five-thousand-forty]} f32.div [seventh-order.]
+                ({[.x] [.third-order]} f32.sub [through-third.]
+                  ({[.through-third] [.fifth-order]} f32.add [through-fifth.]
+                    ({[.through-fifth] [.seventh-order]} f32.sub)
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+))
+
+(def program smollm2.cos-reduced :
+  (f32 val)
+  ->
+  (f32 val)
+= ([x.]
+  ({[.x] [.x]} f32.mul [x2.]
+    ({[.x2] [.x2]} f32.mul [x4.]
+      ({[.x4] [.x2]} f32.mul [x6.]
+        (const.u32.0x3F800000 u32.bitcast-f32 [one.])
+        (const.u32.0x40000000 u32.bitcast-f32 [two.])
+        (const.u32.0x41C00000 u32.bitcast-f32 [twenty-four.])
+        (const.u32.0x44340000 u32.bitcast-f32 [seven-twenty.])
+        ({[.x2] [.two]} f32.div [second-order.]
+          ({[.x4] [.twenty-four]} f32.div [fourth-order.]
+            ({[.x6] [.seven-twenty]} f32.div [sixth-order.]
+              ({[.one] [.second-order]} f32.sub [through-second.]
+                ({[.through-second] [.fourth-order]} f32.add [through-fourth.]
+                  ({[.through-fourth] [.sixth-order]} f32.sub)
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+))
+
+(def program smollm2.sin :
+  (f32 val)
+  ->
+  (f32 val)
+= ([x.]
+  (const.u32.0x3F22F983 u32.bitcast-f32 [inverse-half-pi.])
+  (const.u32.0x3FC90FDA u32.bitcast-f32 [half-pi-high.])
+  (const.u32.0x33A22168 u32.bitcast-f32 [half-pi-low.])
+  ({[.x] [.inverse-half-pi]} f32.mul [scaled.]
+    ([.scaled] f32.round-to-u32 [quadrant-count.]
+      ([.quadrant-count] u32.to-f32 [quadrant-count-f32.]
+        ({[.quadrant-count-f32] [.half-pi-high]} f32.mul [high-offset.]
+          ({[.quadrant-count-f32] [.half-pi-low]} f32.mul [low-offset.]
+            ({[.x] [.high-offset]} f32.sub [reduced-high.]
+              ({[.reduced-high] [.low-offset]} f32.sub [reduced.]
+                ([.reduced] smollm2.sin-reduced [sin-reduced.]
+                  ([.reduced] smollm2.cos-reduced [cos-reduced.]
+                    ([.sin-reduced] f32.neg [negative-sin.]
+                      ([.cos-reduced] f32.neg [negative-cos.]
+                        (const.u32.0x00000003 [quadrant-mask.])
+                        (const.u32.0x00000000 [quadrant-zero.])
+                        (const.u32.0x00000001 [quadrant-one.])
+                        (const.u32.0x00000002 [quadrant-two.])
+                        ({[.quadrant-count] [.quadrant-mask]} u32.and [quadrant.]
+                          ({[.quadrant] [.quadrant-zero]} u32.eq [is-zero.]
+                            ({[.quadrant] [.quadrant-one]} u32.eq [is-one.]
+                              ({[.quadrant] [.quadrant-two]} u32.eq [is-two.]
+                                ({[.is-two] [.negative-sin] [.negative-cos]}
+                                  f32.select [quadrants-two-three.]
+                                  ({[.is-one] [.cos-reduced] [.quadrants-two-three]}
+                                    f32.select [quadrants-one-two-three.]
+                                    ({[.is-zero] [.sin-reduced] [.quadrants-one-two-three]}
+                                      f32.select)
+                                  )
+                                )
+                              )
+                            )
+                          )
+                        )
+                      )
+                    )
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+))
+
+(def program smollm2.cos :
+  (f32 val)
+  ->
+  (f32 val)
+= ([x.]
+  (const.u32.0x3FC90FDB u32.bitcast-f32 [half-pi.])
+  ({[.x] [.half-pi]} f32.add [shifted.]
+    ([.shifted] smollm2.sin)
+  )
+))
+
+# Each table is an indexed function of (token position, head channel). The
+# closure captures no storage; evaluating a cell computes its RoPE value.
+(def program smollm2.rope-cos-at :
+  ([n q.] {([.n] ix val) ([.q] ix val)} *)
+  ->
+  ([n q.] (f32 val))
+= ([index.]
+  ([.index] *.elim [position channel.]
+    ([.position] ix.to-u64 [position-u64.]
+      ([.channel] ix.to-u64 [channel-u64.]
+        ({[.position-u64] [.channel-u64]} smollm2.rope-angle [angle.]
+          ([.angle] smollm2.cos)
+        )
+      )
+    )
+  )
+))
+
+(def program smollm2.rope-sin-at :
+  ([n q.] {([.n] ix val) ([.q] ix val)} *)
+  ->
+  ([n q.] (f32 val))
+= ([index.]
+  ([.index] *.elim [position channel.]
+    ([.position] ix.to-u64 [position-u64.]
+      ([.channel] ix.to-u64 [channel-u64.]
+        ({[.position-u64] [.channel-u64]} smollm2.rope-angle [angle.]
+          ([.angle] smollm2.sin)
+        )
+      )
+    )
+  )
+))
+
+(def program smollm2.rope-tables :
+  ([n q.] {
+    ({[.n] u64} :)
+    ({[.q] u64} :)
+  })
+  ->
+  ([n q.] {
+    ({({([.n] ix val) ([.q] ix val)} *) (f32 val)} =>)
+    ({({([.n] ix val) ([.q] ix val)} *) (f32 val)} =>)
+  })
+= ([n-len q-len.]
+  ([.n-len] :.param [n-param.]
+    ([.q-len] :.param [q-param.]
+      {
+        ({[.n-param] [.q-param]} name.smollm2.rope-cos-at lift)
+        ({[.n-param] [.q-param]} name.smollm2.rope-sin-at lift)
+      }
+    )
+  )
+))
+
+# Read one Q/K cell after applying Llama-style rotate-half RoPE.
+(def program smollm2.rope-rotate-at :
+  ([n h q.] {
+    ({[.q] u64} :)
+    ({({[.h] [.q]} *) u64} :)
+    ({cap.own ({[.n] ({[.h] [.q]} *)} *) f32} buf val)
+    ([.n] ix val)
+    ([.h] ix val)
+    ([.q] ix val)
+  })
+  ->
+  ([n h q.] (f32 val))
+= ([q-len d-len input token head channel.]
+  ([.input] {[x. x x]} [input-current input-paired.]
+  ([.q-len] f32.matmul.len-split5 [q-current q-paired q-bounds q-index _unused-q _q-param.]
+    ([.d-len] f32.matmul.len-copies2 [d-current d-paired.]
+      ([.token] ix.copy [token-current token-after-current.]
+        ([.token-after-current] ix.copy [token-paired token-rope.]
+          ([.token-rope] ix.copy [token-cos token-sin.]
+            ([.head] ix.copy [head-current head-paired.]
+              ([.channel] ix.copy [channel-current channel-after-current.]
+                ([.channel-after-current] ix.copy [channel-for-pair channel-rope.]
+                  ([.channel-rope] ix.copy [channel-cos channel-sin.]
+                    ([.channel-for-pair] ix.to-u64 [channel-u64.]
+                      (const.u64.0x0000000000000020 [half-head-width.])
+                      ({[.channel-u64] [.half-head-width]} u64.lt [first-half.]
+                        ({[.channel-u64] [.half-head-width]} u64.add [upper-channel.]
+                          ({[.channel-u64] [.half-head-width]} u64.sub [lower-channel.]
+                            ({[.first-half] [.upper-channel] [.lower-channel]}
+                              u64.select [paired-u64.]
+                              ([.paired-u64] u64.name [named-paired.]
+                                ({[.q-bounds] [.named-paired]} u64.gt [paired-in-bounds if-paired-in-bounds _if-paired-out-of-bounds.]
+                                  ({[.paired-in-bounds] [.if-paired-in-bounds]} assert-then [paired-proof.]
+                                    ({[.named-paired] [.q-index] [.paired-proof]} u64.to-ix [paired-channel.]
+                                      ({[.head-current] [.channel-current]} *.intro [current-head-channel.]
+                                        ({[.q-current] [.current-head-channel]} row-major-index [current-hidden.]
+                                          ({[.token-current] [.current-hidden]} *.intro [current-token-hidden.]
+                                            ({[.d-current] [.current-token-hidden]} row-major-index [current-flat.]
+                                              ({[.current-flat] [.input-current]} ix [current.]
+                                                ({[.head-paired] [.paired-channel]} *.intro [paired-head-channel.]
+                                                  ({[.q-paired] [.paired-head-channel]} row-major-index [paired-hidden.]
+                                                    ({[.token-paired] [.paired-hidden]} *.intro [paired-token-hidden.]
+                                                      ({[.d-paired] [.paired-token-hidden]} row-major-index [paired-flat.]
+                                                        ({[.paired-flat] [.input-paired]} ix [paired.]
+                                                          ([.paired] f32.neg [negative-paired.]
+                                                            ({[.first-half] [.negative-paired] [.paired]} f32.select [rotated-half.]
+                                                              ({[.token-cos] [.channel-cos]} *.intro [cos-index.]
+                                                                ([.cos-index] smollm2.rope-cos-at [cosine.]
+                                                                  ({[.token-sin] [.channel-sin]} *.intro [sin-index.]
+                                                                    ([.sin-index] smollm2.rope-sin-at [sine.]
+                                                                      ({[.current] [.cosine]} f32.mul [scaled-current.]
+                                                                        ({[.rotated-half] [.sine]} f32.mul [scaled-paired.]
+                                                                          ({[.scaled-current] [.scaled-paired]} f32.add)
+                                                                        )
+                                                                      )
+                                                                    )
+                                                                  )
+                                                                )
+                                                              )
+                                                            )
+                                                          )
+                                                        )
+                                                      )
+                                                    )
+                                                  )
+                                                )
+                                              )
+                                            )
+                                          )
+                                        )
+                                      )
+                                    )
+                                  )
+                                )
+                              )
+                            )
+                          )
+                        )
+                      )
+                    )
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+  )
+))
+
+# Read an unrotated V cell at (token, head, channel).
+(def program smollm2.attention-value-at :
+  ([n h q.] {
+    ({[.q] u64} :)
+    ({({[.h] [.q]} *) u64} :)
+    ({cap.own ({[.n] ({[.h] [.q]} *)} *) f32} buf val)
+    ([.n] ix val)
+    ([.h] ix val)
+    ([.q] ix val)
+  })
+  ->
+  ([n h q.] (f32 val))
+= ([q-len d-len value token head channel.]
+  ({[.head] [.channel]} *.intro [head-channel.]
+    ({[.q-len] [.head-channel]} row-major-index [hidden.]
+      ({[.token] [.hidden]} *.intro [token-hidden.]
+        ({[.d-len] [.token-hidden]} row-major-index [flat.]
+          ({[.flat] [.value]} ix)
+        )
+      )
+    )
+  )
+))
+
+# One channel contribution to Q[target, head] dot K[source, head].
+(def program smollm2.attention-score-dot-at :
+  ([n h q.] {
+    ({[.q] u64} :)
+    ({({[.h] [.q]} *) u64} :)
+    ({cap.own ({[.n] ({[.h] [.q]} *)} *) f32} buf val)
+    ({cap.own ({[.n] ({[.h] [.q]} *)} *) f32} buf val)
+    ([.n] ix val)
+    ([.h] ix val)
+    ([.n] ix val)
+    ([.q] ix val)
+  })
+  ->
+  ([n h q.] (f32 val))
+= ([q-len d-len query key target head source channel.]
+  ([.q-len] f32.matmul.len-copies2 [q-query q-key.]
+    ([.d-len] f32.matmul.len-copies2 [d-query d-key.]
+      ([.head] ix.copy [head-query head-key.]
+        ([.channel] ix.copy [channel-query channel-key.]
+          ({[.q-query d-query query target head-query channel-query]}
+            smollm2.rope-rotate-at [rotated-query.]
+            ({[.q-key d-key key source head-key channel-key]}
+              smollm2.rope-rotate-at [rotated-key.]
+              ({[.rotated-query] [.rotated-key]} f32.mul)
+            )
+          )
+        )
+      )
+    )
+  )
+))
+
+# Scaled, causal attention score for one target/source/head triple.
+(def program smollm2.attention-score :
+  ([n h q.] {
+    ({[.n] u64} :)
+    ({[.h] u64} :)
+    ({[.q] u64} :)
+    ({({[.h] [.q]} *) u64} :)
+    ({cap.own ({[.n] ({[.h] [.q]} *)} *) f32} buf val)
+    ({cap.own ({[.n] ({[.h] [.q]} *)} *) f32} buf val)
+    ([.n] ix val)
+    ([.h] ix val)
+    ([.n] ix val)
+  })
+  ->
+  ([n h q.] (f32 val))
+= ([n-len h-len q-len d-len query key target head source.]
+  ([.n-len] :.param [n-param.]
+  ([.h-len] :.param [h-param.]
+  ([.q-len] f32.matmul.len-copies2-param [q-reduce q-environment q-param.]
+    ([.target] ix.copy [target-score target-mask.]
+      ([.source] ix.copy [source-score source-mask.]
+        ({[.q-environment] [.d-len]} *.intro [score-environment-2.]
+          ({[.score-environment-2] [.query]} *.intro [score-environment-3.]
+            ({[.score-environment-3] [.key]} *.intro [score-environment-4.]
+              ({[.score-environment-4] [.target-score]} *.intro [score-environment-5.]
+                ({[.score-environment-5] [.head]} *.intro [score-environment-6.]
+                  ({[.score-environment-6] [.source-score]} *.intro [score-environment.]
+                        {
+                          (const.u32.0x00000000 u32.bitcast-f32)
+                          unit.intro
+                          name.smollm2.f32-add-env
+                          ({
+                            [.score-environment]
+                            ({[.n-param] [.h-param] [.q-param]}
+                              name.smollm2.attention-score-dot-at)
+                          })
+                          [.q-reduce]
+                        }
+                        reducec [dot.]
+                        (const.u32.0x3E000000 u32.bitcast-f32 [inverse-sqrt-head-width.]
+                        ({[.dot] [.inverse-sqrt-head-width]} f32.mul [scaled-dot.]
+                          ([.source-mask] ix.to-u64 [source-u64.]
+                            ([.target-mask] ix.to-u64 [target-u64.]
+                              ({[.source-u64] [.target-u64]} u64.lte [causal.]
+                                (const.u32.0xC2A00000 u32.bitcast-f32 [masked-score.]
+                                ({[.causal] [.scaled-dot] [.masked-score]} f32.select)
+                              )
+                            )
+                          )
+                        )
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+  )
+  )
+))))
+
+# One source-token contribution to the softmax denominator and weighted value.
+(def program smollm2.attention-contribution-at :
+  ([n h q.] {
+    ({[.n] u64} :)
+    ({[.h] u64} :)
+    ({[.q] u64} :)
+    ({({[.h] [.q]} *) u64} :)
+    ({cap.own ({[.n] ({[.h] [.q]} *)} *) f32} buf val)
+    ({cap.own ({[.n] ({[.h] [.q]} *)} *) f32} buf val)
+    ({cap.own ({[.n] ({[.h] [.q]} *)} *) f32} buf val)
+    ([.n] ix val)
+    ([.h] ix val)
+    ([.q] ix val)
+    ([.n] ix val)
+  })
+  ->
+  ([n h q.] ({(f32 val) (f32 val)} *))
+= ([n-len h-len q-len d-len query key value target head channel source.]
+  ([.q-len] f32.matmul.len-copies2 [q-score q-value.]
+    ([.d-len] f32.matmul.len-copies2 [d-score d-value.]
+      ([.head] ix.copy [head-score head-value.]
+        ([.source] ix.copy [source-score source-value.]
+          ({[.n-len h-len q-score d-score query key target head-score source-score]}
+            smollm2.attention-score [score.]
+            ([.score] smollm2.exp-approx [exponential.]
+              ({[.q-value d-value value source-value head-value channel]}
+                smollm2.attention-value-at [source-value-cell.]
+                ({[.exponential] [.source-value-cell]} f32.mul [weighted.]
+                  ({[.exponential] [.weighted]} *.intro)
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+))
+
+# Component-wise reduction for (softmax denominator, weighted value).
+(def program smollm2.attention-pair-add :
+  {
+    1
+    ({
+    ({(f32 val) (f32 val)} *)
+    ({(f32 val) (f32 val)} *)
+    } *)
+  }
+  ->
+  ({(f32 val) (f32 val)} *)
+= ([_environment pairs.]
+  ([.pairs] *.elim [left right.]
+    ([.left] *.elim [left-denominator left-weighted.]
+      ([.right] *.elim [right-denominator right-weighted.]
+        {
+          ({[.left-denominator] [.right-denominator]} f32.add)
+          ({[.left-weighted] [.right-weighted]} f32.add)
+        }
+        *.intro
+      )
+    )
+  )
+))
+
+# Produce one [token, head, channel] context cell by reducing over all source
+# tokens. Future positions receive a large negative score in attention-score.
+(def program smollm2.attention-context-at :
+  ([n h q.] {
+    ({[.n] u64} :)
+    ({[.h] u64} :)
+    ({[.q] u64} :)
+    ({({[.h] [.q]} *) u64} :)
+    ({cap.own ({[.n] ({[.h] [.q]} *)} *) f32} buf val)
+    ({cap.own ({[.n] ({[.h] [.q]} *)} *) f32} buf val)
+    ({cap.own ({[.n] ({[.h] [.q]} *)} *) f32} buf val)
+    (({[.n] ({[.h] [.q]} *)} *) ix val)
+  })
+  ->
+  ([n h q.] (f32 val))
+= ([n-len h-len q-len d-len query key value flat.]
+  ([.n-len] f32.matmul.len-copies2-param [reduce-n environment-n producer-n.]
+    ([.h-len] f32.matmul.len-copies2-param [head-rows environment-h producer-h.]
+      ([.q-len] f32.matmul.len-copies2-param [hidden-cols environment-q producer-q.]
+        ([.d-len] f32.matmul.len-copies2 [token-cols environment-d.]
+          ([.flat] ix.copy [flat-token flat-hidden.]
+            ({[.token-cols] [.flat-token]} row-major-row [target.]
+              ({[.token-cols] [.flat-hidden]} row-major-col [hidden.]
+                ([.hidden] ix.copy [hidden-head hidden-channel.]
+                  ({[.hidden-cols] [.hidden-head]} row-major-row [head.]
+                    ({[.hidden-cols] [.hidden-channel]} row-major-col [channel.]
+                      ({[.environment-n] [.environment-h]} *.intro [contribution-environment-2.]
+                        ({[.contribution-environment-2] [.environment-q]} *.intro [contribution-environment-3.]
+                          ({[.contribution-environment-3] [.environment-d]} *.intro [contribution-environment-4.]
+                            ({[.contribution-environment-4] [.query]} *.intro [contribution-environment-5.]
+                              ({[.contribution-environment-5] [.key]} *.intro [contribution-environment-6.]
+                                ({[.contribution-environment-6] [.value]} *.intro [contribution-environment-7.]
+                                  ({[.contribution-environment-7] [.target]} *.intro [contribution-environment-8.]
+                                    ({[.contribution-environment-8] [.head]} *.intro [contribution-environment-9.]
+                                      ({[.contribution-environment-9] [.channel]} *.intro [contribution-environment.]
+                                            {
+                                              ({
+                          (const.u32.0x00000000 u32.bitcast-f32)
+                          (const.u32.0x00000000 u32.bitcast-f32)
+                                              } *.intro)
+                                              unit.intro
+                                              name.smollm2.attention-pair-add
+                                              ({
+                                                [.contribution-environment]
+                                                ({[.producer-n] [.producer-h] [.producer-q]}
+                                                  name.smollm2.attention-contribution-at)
+                                              })
+                                              [.reduce-n]
+                                            }
+                                            reducec [sums.]
+                                            ([.sums] *.elim [denominator weighted-sum.]
+                                              ({[.weighted-sum] [.denominator]} f32.div)
+                                            )
+                                      )
+                                    )
+                                  )
+                                )
+                              )
+                            )
+                          )
+                        )
+                      )
+                    )
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+))
+
+(def program smollm2.attention-context :
+  ([n h q.] {
+    (cap.own mem)
+    (cap.own mem)
+    (cap.own mem)
+    ({[.n] u64} :)
+    ({[.h] u64} :)
+    ({[.q] u64} :)
+    ({({[.h] [.q]} *) u64} :)
+    ({({[.n] ({[.h] [.q]} *)} *) u64} :)
+  })
+  ->
+  ([n h q.] (cap.own mem))
+= ([query-mem key-mem value-mem n-len h-len q-len d-len nd-len.]
+  ([.query-mem] mem.cast.f32 [actual-query-len query-raw.]
+    ([.key-mem] mem.cast.f32 [actual-key-len key-raw.]
+      ([.value-mem] mem.cast.f32 [actual-value-len value-raw.]
+        ([.nd-len actual-query-len] u64.eq [query-len-eq if-query-len-eq _if-query-len-ne.]
+          ([.nd-len actual-key-len] u64.eq [key-len-eq if-key-len-eq _if-key-len-ne.]
+            ([.nd-len actual-value-len] u64.eq [value-len-eq if-value-len-eq _if-value-len-ne.]
+              ({[.query-len-eq] [.if-query-len-eq]} assert-then [query-same-length.]
+                ({[.key-len-eq] [.if-key-len-eq]} assert-then [key-same-length.]
+                  ({[.value-len-eq] [.if-value-len-eq]} assert-then [value-same-length.]
+                    ({[.query-raw] [.query-same-length]} buf.f32.cast-same-length [query.]
+                      ({[.key-raw] [.key-same-length]} buf.f32.cast-same-length [key.]
+                        ({[.value-raw] [.value-same-length]} buf.f32.cast-same-length [value.]
+                          ([.n-len] f32.matmul.len-copy-param [environment-n producer-n.]
+                            ([.h-len] f32.matmul.len-copy-param [environment-h producer-h.]
+                              ([.q-len] f32.matmul.len-copy-param [environment-q producer-q.]
+                                ([.nd-len] f32.matmul.len-copies2 [mem-len materializec-len.]
+                                  ({[.environment-n] [.environment-h]} *.intro [context-environment-2.]
+                                    ({[.context-environment-2] [.environment-q]} *.intro [context-environment-3.]
+                                      ({[.context-environment-3] [.d-len]} *.intro [context-environment-4.]
+                                        ({[.context-environment-4] [.query]} *.intro [context-environment-5.]
+                                          ({[.context-environment-5] [.key]} *.intro [context-environment-6.]
+                                            ({[.context-environment-6] [.value]} *.intro [context-environment-7.]
+                                                  {
+                                                    [.mem-len]
+                                                    ({
+                                                      [.materializec-len]
+                                                      [.context-environment-7]
+                                                      ({[.producer-n] [.producer-h] [.producer-q]}
+                                                        name.smollm2.attention-context-at)
+                                                    } materializec)
+                                                  }
+                                                  buf.to-mem
+                                            )
+                                          )
+                                        )
+                                      )
+                                    )
+                                  )
+                                )
+                              )
+                            )
+                          )
+                        )
+                      )
+                    )
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+))
+
+# Multi-head causal self-attention. SmolLM2-1.7B has the same number of query
+# and key/value heads, so Q, K, and V all retain the [tokens, heads*channels]
+# shape. RoPE is evaluated from its Catena closure kernels without a table buffer.
+(def program smollm2.self-attention :
+  ([n h q.] {
+    (cap.own mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    ({[.n] u64} :)
+    ({[.h] u64} :)
+    ({[.q] u64} :)
+    ({({[.h] [.q]} *) u64} :)
+    ({({[.n] ({[.h] [.q]} *)} *) u64} :)
+    ({({({[.h] [.q]} *) ({[.h] [.q]} *)} *) u64} :)
+  })
+  ->
+  ([n h q.] (cap.own mem))
+= ([
+  hidden
+  query-weight
+  key-weight
+  value-weight
+  output-weight
+  n-len
+  h-len
+  q-len
+  d-len
+  nd-len
+  dd-len
+.]
+  ([.hidden] {[x. x x]} [hidden-for-query hidden-after-query.]
+    ([.hidden-after-query] {[x. x x]} [hidden-for-key hidden-for-value.]
+      ({[.hidden-for-query query-weight n-len d-len d-len nd-len dd-len nd-len]}
+        smollm2.language-model-head [query.]
+        ({[.hidden-for-key key-weight n-len d-len d-len nd-len dd-len nd-len]}
+          smollm2.language-model-head [key.]
+          ({[.hidden-for-value value-weight n-len d-len d-len nd-len dd-len nd-len]}
+            smollm2.language-model-head [value.]
+            ({[.query key value n-len h-len q-len d-len nd-len]}
+              smollm2.attention-context [context.]
+              ({[.context output-weight n-len d-len d-len nd-len dd-len nd-len]}
+                smollm2.language-model-head)
+            )
+          )
+        )
+      )
+    )
+  )
+))
+
+# One pre-norm SmolLM2 decoder block:
+#
+#   x = copy(x) + attention(rmsnorm(x))
+#   x = copy(x) + mlp(rmsnorm(x))
+(def program smollm2.decoder-layer :
+  ([n h q i.] {
+    (cap.own mem)
+    (cap.ref mem) # input RMSNorm
+    (cap.ref mem) # query projection
+    (cap.ref mem) # key projection
+    (cap.ref mem) # value projection
+    (cap.ref mem) # attention output projection
+    (cap.ref mem) # post-attention RMSNorm
+    (cap.ref mem) # MLP gate projection
+    (cap.ref mem) # MLP up projection
+    (cap.ref mem) # MLP down projection
+    ({[.n] u64} :)
+    ({[.h] u64} :)
+    ({[.q] u64} :)
+    ({({[.h] [.q]} *) u64} :)
+    ({[.i] u64} :)
+    ({({[.n] ({[.h] [.q]} *)} *) u64} :)
+    ({({[.n] [.i]} *) u64} :)
+    ({({({[.h] [.q]} *) ({[.h] [.q]} *)} *) u64} :)
+    ({({[.i] ({[.h] [.q]} *)} *) u64} :)
+    ({({({[.h] [.q]} *) [.i]} *) u64} :)
+  })
+  ->
+  ([n h q i.] (cap.own mem))
+= ([
+  hidden
+  input-norm
+  query-weight
+  key-weight
+  value-weight
+  attention-output-weight
+  post-attention-norm
+  mlp-gate-weight
+  mlp-up-weight
+  mlp-down-weight
+  n-len
+  h-len
+  q-len
+  d-len
+  i-len
+  nd-len
+  ni-len
+  dd-len
+  id-len
+  di-len
+.]
+  ([.n-len] f32.matmul.len-split5 [n-attention-norm n-attention n-mlp-norm n-mlp _unused-n _param-n.]
+  ([.d-len] f32.matmul.len-split5 [d-attention-norm d-attention d-mlp-norm d-mlp _unused-d _param-d.]
+  ([.nd-len] f32.matmul.len-copies6 [nd-attention-copy nd-attention-norm nd-attention nd-attention-residual nd-mlp-extents nd-mlp-residual.]
+  ([.nd-mlp-extents] f32.matmul.len-copies3 [nd-mlp-copy nd-mlp-norm nd-mlp.]
+    ({[.hidden nd-attention-copy]} smollm2.f32-mem-copy [attention-residual.]
+      ({[.hidden input-norm n-attention-norm d-attention-norm nd-attention-norm]}
+        smollm2.rmsnorm [normalized-for-attention.]
+        ({[.normalized-for-attention query-weight key-weight value-weight attention-output-weight n-attention h-len q-len d-attention nd-attention dd-len]}
+          smollm2.self-attention [attention-output.]
+          ({[.attention-residual attention-output nd-attention-residual]}
+            smollm2.pointwise-add [after-attention.]
+            ({[.after-attention nd-mlp-copy]} smollm2.f32-mem-copy [mlp-residual.]
+              ({[.after-attention post-attention-norm n-mlp-norm d-mlp-norm nd-mlp-norm]}
+                smollm2.rmsnorm [normalized-for-mlp.]
+                ({[.normalized-for-mlp mlp-gate-weight mlp-up-weight mlp-down-weight n-mlp d-mlp i-len nd-mlp ni-len id-len di-len]}
+                  smollm2.mlp [mlp-output.]
+                  ({[.mlp-residual mlp-output nd-mlp-residual]}
+                    smollm2.pointwise-add)
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+  )
+  )
+  )
+))
+
+# SwiGLU feed-forward block.
+(def program smollm2.mlp :
+  ([n d i.] {
+    (cap.own mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    (cap.ref mem)
+    ({[.n] u64} :)
+    ({[.d] u64} :)
+    ({[.i] u64} :)
+    ({({[.n] [.d]} *) u64} :)
+    ({({[.n] [.i]} *) u64} :)
+    ({({[.i] [.d]} *) u64} :)
+    ({({[.d] [.i]} *) u64} :)
+  })
+  ->
+  ([n d i.] (cap.own mem))
+= ([hidden gate-weight up-weight down-weight n-len d-len i-len nd-len ni-len id-len di-len.]
+  ([.hidden] {[x. x x]} [hidden-for-gate hidden-for-up.]
+    ({[.hidden-for-gate gate-weight n-len i-len d-len nd-len id-len ni-len]}
+      smollm2.language-model-head [gate.]
+      ({[.hidden-for-up up-weight n-len i-len d-len nd-len id-len ni-len]}
+        smollm2.language-model-head [up.]
+        ({[.gate ni-len]} smollm2.pointwise-silu [activated-gate.]
+          ({[.activated-gate up ni-len]} smollm2.pointwise-mul [gated-up.]
+            ({[.gated-up down-weight n-len d-len i-len ni-len di-len nd-len]}
+              smollm2.language-model-head)
+          )
+        )
+      )
+    )
+  )
+))
+
+# Range-reduced exponential approximation used by SiLU and attention softmax.
+(def program smollm2.exp-approx-nonnegative :
+  (f32 val)
+  ->
+  (f32 val)
+= ([x.]
+  (const.u32.0x3FB8AA3B u32.bitcast-f32 [inverse-ln2.])
+  (const.u32.0x3F317200 u32.bitcast-f32 [ln2-high.])
+  (const.u32.0x35BFBE8E u32.bitcast-f32 [ln2-low.])
+  (const.u32.0x3F7FF8FC u32.bitcast-f32 [c0.])
+  (const.u32.0x3F809C7E u32.bitcast-f32 [c1.])
+  (const.u32.0x3EEF1187 u32.bitcast-f32 [c2.])
+  (const.u32.0x3E738A8B u32.bitcast-f32 [c3.])
+  ({[.x] [.inverse-ln2]} f32.mul [scaled.])
+  ([.scaled] f32.round-to-u32 [k-u32.])
+  ([.k-u32] u32.to-f32 [k-f32.])
+  ({[.k-f32] [.ln2-high]} f32.mul [k-ln2-high.])
+  ({[.k-f32] [.ln2-low]} f32.mul [k-ln2-low.])
+  ({[.x] [.k-ln2-high]} f32.sub [reduced-high.])
+  ({[.reduced-high] [.k-ln2-low]} f32.sub [reduced.])
+  ({[.reduced] [.c3]} f32.mul [r-c3.])
+  ({[.c2] [.r-c3]} f32.add [p2.])
+  ({[.reduced] [.p2]} f32.mul [r-p2.])
+  ({[.c1] [.r-p2]} f32.add [p1.])
+  ({[.reduced] [.p1]} f32.mul [r-p1.])
+  ({[.c0] [.r-p1]} f32.add [polynomial.])
+  (const.u32.0x0000007F [bias.])
+  (const.u32.0x00800000 [exponent-step.])
+  ({[.k-u32] [.bias]} u32.add [biased-exponent.])
+  ({[.biased-exponent] [.exponent-step]} u32.mul [power-of-two-bits.])
+  ([.power-of-two-bits] u32.bitcast-f32 [power-of-two.])
+  ({[.polynomial] [.power-of-two]} f32.mul)
+))
+
+(def program smollm2.exp-approx :
+  (f32 val)
+  ->
+  (f32 val)
+= ([x.]
+  (const.u32.0x00000000 u32.to-f32 [zero.])
+  (const.u32.0x3F800000 u32.bitcast-f32 [one.])
+  ([.x] f32.neg [negative-x.])
+  ({[.x] [.zero]} f32.lt [negative.])
+  ({[.negative] [.negative-x] [.x]} f32.select [magnitude.])
+  ([.magnitude] smollm2.exp-approx-nonnegative [base.])
+  ({[.one] [.base]} f32.div [reciprocal.])
+  ({[.negative] [.reciprocal] [.base]} f32.select)
+))
+
+(def program smollm2.silu :
+  (f32 val)
+  ->
+  (f32 val)
+= ([x.]
+  (const.u32.0x3F800000 u32.bitcast-f32 [one.])
+  ([.x] f32.neg [negative-x.])
+  ([.negative-x] smollm2.exp-approx [exponential.])
+  ({[.one] [.exponential]} f32.add [denominator.])
+  ({[.x] [.denominator]} f32.div)
+))
+
+# Tensor map: read one cell and postcompose it with scalar SiLU.
+(def program smollm2.pointwise-silu-at :
+  ([n.] {({cap.own [.n] f32} buf val) ([.n] ix val)})
+  ->
+  ([n.] (f32 val))
+= ([input i.]
+  ({[.i] [.input]} ix [value.]
+    ([.value] smollm2.silu)
+  )
+))
+
+(def program smollm2.pointwise-silu :
+  ([n.] {(cap.own mem) ({[.n] u64} :)})
+  ->
+  ([n.] (cap.own mem))
+= ([input-mem len.]
+  ([.input-mem] mem.cast.f32 [actual-len input-raw.]
+    ([.len actual-len] u64.eq [len-eq if-len-eq _if-len-ne.]
+      ({[.len-eq] [.if-len-eq]} assert-then [same-length.]
+        ({[.input-raw] [.same-length]} buf.f32.cast-same-length [input.]
+          ([.len] f32.matmul.len-split5 [mem-len materializec-len producer-len _unused-silu-a _unused-silu-b _param-silu.]
+            {
+              [.mem-len]
+              ({
+                [.materializec-len]
+                [.input]
+                (([.producer-len] :.param) name.smollm2.pointwise-silu-at)
+              } materializec)
+            } buf.to-mem
+          )
+        )
+      )
+    )
+  )
+))
+
+# Materialize a pointwise residual addition.
+(def program smollm2.pointwise-add-at :
+  ([n.] {
+    ({({cap.own [.n] f32} buf val) ({cap.own [.n] f32} buf val)} *)
+    ([.n] ix val)
+  })
+  ->
+  ([n.] (f32 val))
+= ([inputs i.]
+  ([.inputs] *.elim [left right.]
+    ({[.i] [.left]} ix [left-value.]
+      ({[.i] [.right]} ix [right-value.]
+        ({[.left-value] [.right-value]} f32.add)
+      )
+    )
+  )
+))
+
+(def program smollm2.pointwise-add :
+  ([n.] {(cap.own mem) (cap.own mem) ({[.n] u64} :)})
+  ->
+  ([n.] (cap.own mem))
+= ([left-mem right-mem len.]
+  ([.left-mem] mem.cast.f32 [actual-left-len left-raw.]
+    ([.right-mem] mem.cast.f32 [actual-right-len right-raw.]
+      ([.len actual-left-len] u64.eq [left-len-eq if-left-len-eq _if-left-len-ne.]
+        ([.len actual-right-len] u64.eq [right-len-eq if-right-len-eq _if-right-len-ne.]
+          ({[.left-len-eq] [.if-left-len-eq]} assert-then [left-same-length.]
+            ({[.right-len-eq] [.if-right-len-eq]} assert-then [right-same-length.]
+              ({[.left-raw] [.left-same-length]} buf.f32.cast-same-length [left.]
+                ({[.right-raw] [.right-same-length]} buf.f32.cast-same-length [right.]
+                  ([.len] f32.matmul.len-split5 [mem-len materializec-len producer-len _unused-add-a _unused-add-b _param-add.]
+                    {
+                      [.mem-len]
+                      ({
+                        [.materializec-len]
+                        ({[.left] [.right]} *.intro)
+                        (([.producer-len] :.param) name.smollm2.pointwise-add-at)
+                      } materializec)
+                    } buf.to-mem
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+))
+
+# Materialize a pointwise multiplication (used by SwiGLU).
+(def program smollm2.pointwise-mul-at :
+  ([n.] {
+    ({({cap.own [.n] f32} buf val) ({cap.own [.n] f32} buf val)} *)
+    ([.n] ix val)
+  })
+  ->
+  ([n.] (f32 val))
+= ([inputs i.]
+  ([.inputs] *.elim [left right.]
+    ({[.i] [.left]} ix [left-value.]
+      ({[.i] [.right]} ix [right-value.]
+        ({[.left-value] [.right-value]} f32.mul)
+      )
+    )
+  )
+))
+
+(def program smollm2.pointwise-mul :
+  ([n.] {(cap.own mem) (cap.own mem) ({[.n] u64} :)})
+  ->
+  ([n.] (cap.own mem))
+= ([left-mem right-mem len.]
+  ([.left-mem] mem.cast.f32 [actual-left-len left-raw.]
+    ([.right-mem] mem.cast.f32 [actual-right-len right-raw.]
+      ([.len actual-left-len] u64.eq [left-len-eq if-left-len-eq _if-left-len-ne.]
+        ([.len actual-right-len] u64.eq [right-len-eq if-right-len-eq _if-right-len-ne.]
+          ({[.left-len-eq] [.if-left-len-eq]} assert-then [left-same-length.]
+            ({[.right-len-eq] [.if-right-len-eq]} assert-then [right-same-length.]
+              ({[.left-raw] [.left-same-length]} buf.f32.cast-same-length [left.]
+                ({[.right-raw] [.right-same-length]} buf.f32.cast-same-length [right.]
+                  ([.len] f32.matmul.len-split5 [mem-len materializec-len producer-len _unused-mul-a _unused-mul-b _param-mul.]
+                    {
+                      [.mem-len]
+                      ({
+                        [.materializec-len]
+                        ({[.left] [.right]} *.intro)
+                        (([.producer-len] :.param) name.smollm2.pointwise-mul-at)
+                      } materializec)
+                    } buf.to-mem
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+))
+
+# sqrt(x) by six Newton-Raphson iterations. Model inputs to this operation are
+# non-negative, and zero maps to zero.
+(def program smollm2.sqrt :
+  (f32 val)
+  ->
+  (f32 val)
+= ([x.]
+  (const.u32.0x00000000 u32.to-f32 [zero.])
+  (const.u32.0x3F800000 u32.bitcast-f32 [one.])
+  (const.u32.0x3F000000 u32.bitcast-f32 [half.])
+  ([.x one] f32.lt [lt-one.])
+  ([.lt-one one x] f32.select [guess-0.])
+  ([.x guess-0] f32.div [ratio-0.])
+  ([.guess-0 ratio-0] f32.add [sum-0.])
+  ([.sum-0 half] f32.mul [guess-1.])
+  ([.x guess-1] f32.div [ratio-1.])
+  ([.guess-1 ratio-1] f32.add [sum-1.])
+  ([.sum-1 half] f32.mul [guess-2.])
+  ([.x guess-2] f32.div [ratio-2.])
+  ([.guess-2 ratio-2] f32.add [sum-2.])
+  ([.sum-2 half] f32.mul [guess-3.])
+  ([.x guess-3] f32.div [ratio-3.])
+  ([.guess-3 ratio-3] f32.add [sum-3.])
+  ([.sum-3 half] f32.mul [guess-4.])
+  ([.x guess-4] f32.div [ratio-4.])
+  ([.guess-4 ratio-4] f32.add [sum-4.])
+  ([.sum-4 half] f32.mul [guess-5.])
+  ([.x guess-5] f32.div [ratio-5.])
+  ([.guess-5 ratio-5] f32.add [sum-5.])
+  ([.sum-5 half] f32.mul [guess-6.])
+  ([.x zero] f32.lte [non-positive.])
+  ([.non-positive zero guess-6] f32.select)
+))
+
+(def program smollm2.f32-add-env :
+  {1 ({(f32 val) (f32 val)} *)}
+  ->
+  (f32 val)
+= ([env pair.]
+  ([.pair] *.elim [acc value.]
+    ({[.acc] [.value]} f32.add)
+  )
+))
+
+# Produce x[row, k]^2 for the row reduction in RMSNorm.
+(def program smollm2.rmsnorm-square-at :
+  ([n d.] {
+    ({
+      ({[.d] u64} :)
+      ({
+        ({cap.own ({[.n] [.d]} *) f32} buf val)
+        ([.n] ix val)
+      } *)
+    } *)
+    ([.d] ix val)
+  })
+  ->
+  ([n d.] (f32 val))
+= ([env k.]
+  ([.env] *.elim [d-len input-and-row.]
+    ([.input-and-row] *.elim [input row.]
+      ({[.row] [.k]} *.intro [row-k.]
+        ({[.d-len] [.row-k]} row-major-index [flat.]
+          ({[.flat] [.input]} ix [x.]
+            ({[.x] [.x]} f32.mul)
+          )
+        )
+      )
+    )
+  )
+))
+
+# Produce one learned row-wise RMSNorm output cell.
+(def program smollm2.rmsnorm-at :
+  ([n d.] {
+    ({
+      ({[.n] u64} :)
+      ({
+        ({[.d] u64} :)
+        ({
+          ({({[.n] [.d]} *) u64} :)
+          ({
+            ({cap.own ({[.n] [.d]} *) f32} buf val)
+            ({cap.ref [.d] f32} buf val)
+          } *)
+        } *)
+      } *)
+    } *)
+    (({[.n] [.d]} *) ix val)
+  })
+  ->
+  ([n d.] (f32 val))
+= ([env flat.]
+  ([.env] *.elim [n-len rest-a.]
+    ([.rest-a] *.elim [d-len rest-b.]
+      ([.rest-b] *.elim [nd-len buffers.]
+        ([.buffers] *.elim [input weight.]
+          ([.n-len] f32.matmul.len-copy-param [_unused-n producer-n.]
+            ([.d-len] f32.matmul.len-copies6 [row-cols col-cols reduce-d square-env-d square-param-d float-d.]
+              ([.flat] ix.copy [flat-a current-flat.]
+                ([.flat-a] ix.copy [row-flat col-flat.]
+                  ({[.row-cols] [.row-flat]} row-major-row [row.]
+                    ({[.col-cols] [.col-flat]} row-major-col [channel.]
+                      ([.input] {[x. x x]} [input-for-square input-for-current.]
+                        ([.square-param-d] :.param [producer-d.]
+                          ({
+                            (const.u32.0x00000000 u32.bitcast-f32)
+                            unit.intro
+                            name.smollm2.f32-add-env
+                            ({
+                              ({[.square-env-d]
+                                ({[.input-for-square] [.row]} *.intro)} *.intro)
+                              ({[.producer-n] [.producer-d]}
+                                name.smollm2.rmsnorm-square-at)
+                            })
+                            [.reduce-d]
+                          } reducec [sum-squares.]
+                          ([.float-d] :.forget [d-value.]
+                            ([.d-value] u64.to-f32 [d-f32.]
+                              ({[.sum-squares] [.d-f32]} f32.div [mean-square.]
+                                (const.u32.0x3727C5AC u32.bitcast-f32 [epsilon.])
+                                ({[.mean-square] [.epsilon]} f32.add [mean-plus-epsilon.]
+                                  ([.mean-plus-epsilon] smollm2.sqrt [rms.]
+                                    ({[.current-flat] [.input-for-current]} ix [current.]
+                                      ({[.channel] [.weight]} ix [scale.]
+                                        ({[.current] [.rms]} f32.div [normalized.]
+                                          ({[.normalized] [.scale]} f32.mul)
+                                        )
+                                      )
+                                    )
+                                  )
+                                )
+                              )
+                            )
+                          )
+                        )
+                      )
+                    )
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+)))
+
+# Materialize learned row-wise RMSNorm over [tokens, hidden-size].
+(def program smollm2.rmsnorm :
+  ([n d.] {
+    (cap.own mem)
+    (cap.ref mem)
+    ({[.n] u64} :)
+    ({[.d] u64} :)
+    ({({[.n] [.d]} *) u64} :)
+  })
+  ->
+  ([n d.] (cap.own mem))
+= ([input-mem weight-mem n-len d-len nd-len.]
+  ([.input-mem] mem.cast.f32 [actual-nd-len input-raw.]
+    ([.weight-mem] mem.cast.f32 [actual-d-len weight-raw.]
+      ([.nd-len actual-nd-len] u64.eq [input-len-eq if-input-len-eq _if-input-len-ne.]
+        ([.d-len actual-d-len] u64.eq [weight-len-eq if-weight-len-eq _if-weight-len-ne.]
+          ({[.input-len-eq] [.if-input-len-eq]}
+            assert-then [input-same-length.]
+            ({[.weight-len-eq] [.if-weight-len-eq]}
+              assert-then [weight-same-length.]
+              ({[.input-raw] [.input-same-length]}
+                buf.f32.cast-same-length [input.]
+                ({[.weight-raw] [.weight-same-length]}
+                  buf.f32.cast-same-length [weight.]
+                  ([.n-len] f32.matmul.len-copy-param [env-n producer-n.]
+                    ([.d-len] f32.matmul.len-copy-param [env-d producer-d.]
+                      ([.nd-len] f32.matmul.len-copies2 [mem-len materializec-len.]
+                        {
+                          [.mem-len]
+                          ({
+                            [.materializec-len]
+                            ({[.env-n]
+                              ({[.env-d]
+                                ({[.nd-len]
+                                  ({[.input] [.weight]} *.intro)
+                                } *.intro)
+                              } *.intro)
+                            } *.intro)
+                            ({[.producer-n] [.producer-d]}
+                              name.smollm2.rmsnorm-at)
+                          } materializec)
+                        } buf.to-mem
+                      )
+                    )
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+))
+
+# Read one cell of the embedded token matrix. The output index is split into a
+# token position and hidden channel; the token ID selects a row of the shared
+# [vocabulary-size, hidden-size] embedding matrix.
+(def program smollm2.embed-tokens-at :
+  ([n d v.] {
+    ({
+      ({[.n] u64} :)
+      ({
+        ({[.d] u64} :)
+        ({
+          ({[.v] u64} :)
+          ({
+            ({({[.v] [.d]} *) u64} :)
+            ({
+              ({cap.ref [.n] u64} buf val)
+              ({cap.ref ({[.v] [.d]} *) f32} buf val)
+            } *)
+          } *)
+        } *)
+      } *)
+    } *)
+    (({[.n] [.d]} *) ix val)
+  })
+  ->
+  ([n d v.] (f32 val))
+= ([env flat.]
+  ([.env] *.elim [n-len rest-a.]
+    ([.rest-a] *.elim [d-len rest-b.]
+      ([.rest-b] *.elim [v-len rest-c.]
+        ([.rest-c] *.elim [vd-len buffers.]
+          ([.buffers] *.elim [tokens embedding.]
+            ([.d-len] f32.matmul.len-copies3 [row-cols col-cols embedding-cols.]
+              ([.flat] ix.copy [flat-for-row flat-for-col.]
+                ({[.row-cols] [.flat-for-row]} row-major-row [token-position.]
+                  ({[.col-cols] [.flat-for-col]} row-major-col [channel.]
+                    ({[.token-position] [.tokens]} ix [token-id.]
+                      ([.token-id] u64.name [named-token-id.]
+                        ({[.v-len] [.named-token-id]} u64.gt [in-vocabulary if-in-vocabulary _if-out-of-vocabulary.]
+                          ({[.in-vocabulary] [.if-in-vocabulary]}
+                            assert-then [token-in-vocabulary.]
+                            ({[.named-token-id] [.v-len] [.token-in-vocabulary]}
+                              u64.to-ix [token-row.]
+                              ({[.token-row] [.channel]} *.intro [embedding-index.]
+                                ({[.embedding-cols] [.embedding-index]}
+                                  row-major-index [embedding-flat.]
+                                  ({[.embedding-flat] [.embedding]} ix)
+                                )
+                              )
+                            )
+                          )
+                        )
+                      )
+                    )
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+))
+
+# Materialize token embeddings as a row-major [tokens, hidden-size] f32 buffer.
+# All logical and flattened extents are explicit and checked against the input
+# memory lengths.
+(def program smollm2.embed-tokens :
+  ([n d v.] {
+    (cap.ref mem)
+    (cap.ref mem)
+    ({[.n] u64} :)
+    ({[.d] u64} :)
+    ({[.v] u64} :)
+    ({({[.n] [.d]} *) u64} :)
+    ({({[.v] [.d]} *) u64} :)
+  })
+  ->
+  ([n d v.] (cap.own mem))
+= ([token-mem embedding-mem n-len d-len v-len nd-len vd-len.]
+  ([.token-mem] mem.cast.u64 [actual-n-len token-raw.]
+    ([.embedding-mem] mem.cast.f32 [actual-vd-len embedding-raw.]
+      ([.n-len actual-n-len] u64.eq [token-len-eq if-token-len-eq _if-token-len-ne.]
+        ([.vd-len actual-vd-len] u64.eq [embedding-len-eq if-embedding-len-eq _if-embedding-len-ne.]
+          ({[.token-len-eq] [.if-token-len-eq]}
+            assert-then [token-same-length.]
+            ({[.embedding-len-eq] [.if-embedding-len-eq]}
+              assert-then [embedding-same-length.]
+              ({[.token-raw] [.token-same-length]}
+                buf.u64.cast-same-length [tokens.]
+                ({[.embedding-raw] [.embedding-same-length]}
+                  buf.f32.cast-same-length [embedding.]
+                  ([.n-len] f32.matmul.len-copy-param [env-n producer-n.]
+                    ([.d-len] f32.matmul.len-copy-param [env-d producer-d.]
+                      ([.v-len] f32.matmul.len-copy-param [env-v producer-v.]
+                        ([.nd-len] f32.matmul.len-copies2 [mem-len materializec-len.]
+                          {
+                            [.mem-len]
+                            ({
+                              [.materializec-len]
+                              ({[.env-n]
+                                ({[.env-d]
+                                  ({[.env-v]
+                                    ({[.vd-len]
+                                      ({[.tokens] [.embedding]} *.intro)
+                                    } *.intro)
+                                  } *.intro)
+                                } *.intro)
+                              } *.intro)
+                              ({[.producer-n] [.producer-d] [.producer-v]}
+                                name.smollm2.embed-tokens-at)
+                            } materializec)
+                          } buf.to-mem
+                        )
+                      )
+                    )
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+))
+
+# Turn an index (i, j) into (j, i). Precomposing a matrix view with this
+# program gives a transposed view without allocating a transposed buffer.
+(def program smollm2.swap-matrix-index :
+  ([n m.] ({([.n] ix val) ([.m] ix val)} *))
+  ->
+  ([n m.] ({([.m] ix val) ([.n] ix val)} *))
+= ([ij.]
+  ([.ij] *.elim [i j.]
+    ({[.j] [.i]} *.intro)
+  )
+))
+
+# Capability-polymorphic buffer view used for owned intermediate activations.
+(def program smollm2.f32-buf-at :
+  ([n.] {
+    ({cap.own [.n] f32} buf val)
+    ([.n] ix val)
+  })
+  ->
+  ([n.] (f32 val))
+= ([input i.]
+  ({[.i] [.input]} ix)
+))
+
+# Make an owned f32 memory copy by materializing its indexed buffer view.
+(def program smollm2.f32-mem-copy :
+  ([n.] {
+    (cap.own mem)
+    ({[.n] u64} :)
+  })
+  ->
+  ([n.] (cap.own mem))
+= ([input-mem len.]
+  ([.input-mem] mem.cast.f32 [actual-len input-raw.]
+    ([.len actual-len] u64.eq [len-eq if-len-eq _if-len-ne.]
+      ({[.len-eq] [.if-len-eq]} assert-then [same-length.]
+        ({[.input-raw] [.same-length]} buf.f32.cast-same-length [input.]
+          ([.len] f32.matmul.len-split5 [mem-len materializec-len producer-len _unused-copy-a _unused-copy-b _param-copy.]
+            {
+              [.mem-len]
+              ({
+                [.materializec-len]
+                [.input]
+                (([.producer-len] :.param) name.smollm2.f32-buf-at)
+              } materializec)
+            }
+            buf.to-mem
+          )
+        )
+      )
+    )
+  )
+))
+
+(def program smollm2.f32-buf-view :
+  ([n.] {
+    ({[.n] u64} :)
+    ({cap.own [.n] f32} buf val)
+  })
+  ->
+  ([n.] ({([.n] ix val) (f32 val)} =>))
+= ([len input.]
+  ([.len] f32.matmul.len-params3 [with-unit-len index-id-len buf-at-len.]
+    {
+      ({
+        ([.with-unit-len] name.f32.matmul.index-with-unit lift)
+        ({
+          ([.input] defer)
+          ([.index-id-len] name.f32.matmul.index-id lift)
+        } tensor)
+      } compose)
+      ([.buf-at-len] name.smollm2.f32-buf-at lift)
+    } compose
+  )
+))
+
+# Compute one logit from:
+#
+#   hidden    : [tokens, hidden-size]
+#   embedding : [vocabulary-size, hidden-size]
+#
+# The embedding view is precomposed with swap-matrix-index, producing the
+# [hidden-size, vocabulary-size] view required by matrix multiplication.
+(def program smollm2.language-model-head-at :
+  ([n v d.] {
+    ({
+      ({[.n] u64} :)
+      ({
+        ({[.v] u64} :)
+        ({
+          ({[.d] u64} :)
+          ({
+            ({({[.n] [.d]} *) u64} :)
+            ({
+              ({({[.v] [.d]} *) u64} :)
+              ({
+                ({cap.own ({[.n] [.d]} *) f32} buf val)
+                ({cap.ref ({[.v] [.d]} *) f32} buf val)
+              } *)
+            } *)
+          } *)
+        } *)
+      } *)
+    } *)
+    (({[.n] [.v]} *) ix val)
+  })
+  ->
+  ([n v d.] (f32 val))
+= ([env flat.]
+  ([.env] *.elim [n-len rest-a.]
+    ([.rest-a] *.elim [v-len rest-b.]
+      ([.rest-b] *.elim [d-len rest-c.]
+        ([.rest-c] *.elim [nd-len rest-d.]
+          ([.rest-d] *.elim [vd-len buffers.]
+            ([.buffers] *.elim [hidden embedding.]
+              ([.n-len] f32.matmul.len-copy-param [hidden-rows producer-n.]
+                ([.v-len] f32.matmul.len-copies3 [generic-v embedding-rows swap-v-len.]
+                  ([.d-len] f32.matmul.len-split5 [generic-d hidden-cols embedding-cols swap-d-len _unused-d _param-d.]
+                    ([.swap-d-len] :.param [swap-d-param.]
+                      ([.swap-v-len] :.param [swap-v-param.]
+                        ({
+                          ({[.swap-d-param] [.swap-v-param]}
+                            name.smollm2.swap-matrix-index
+                            lift)
+                          ({[.embedding-rows] [.embedding-cols]
+                            ({[.vd-len] [.embedding]} f32.buf.view)}
+                            f32.row-major.matrix-view)
+                        } compose [embedding-transposed-view.]
+                          ({
+                            [.generic-v]
+                            [.generic-d]
+                            ({[.hidden-rows] [.hidden-cols]
+                              ({[.nd-len] [.hidden]} smollm2.f32-buf-view)}
+                              f32.row-major.matrix-view)
+                            [.embedding-transposed-view]
+                            [.flat]
+                          } f32.matmul.row-major.cell-at)
+                        )
+                      )
+                    )
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+))
+
+# Materialize all [tokens, vocabulary-size] logits. The six extent values make
+# every matrix shape and flat-buffer length explicit at the program boundary.
+(def program smollm2.language-model-head :
+  ([n v d.] {
+    (cap.own mem)
+    (cap.ref mem)
+    ({[.n] u64} :)
+    ({[.v] u64} :)
+    ({[.d] u64} :)
+    ({({[.n] [.d]} *) u64} :)
+    ({({[.v] [.d]} *) u64} :)
+    ({({[.n] [.v]} *) u64} :)
+  })
+  ->
+  ([n v d.] (cap.own mem))
+= ([hidden-mem embedding-mem n-len v-len d-len nd-len vd-len nv-len.]
+  ([.hidden-mem] mem.cast.f32 [actual-nd-len hidden-raw.]
+    ([.embedding-mem] mem.cast.f32 [actual-vd-len embedding-raw.]
+      ([.nd-len actual-nd-len] u64.eq [hidden-len-eq if-hidden-len-eq _if-hidden-len-ne.]
+        ([.vd-len actual-vd-len] u64.eq [embedding-len-eq if-embedding-len-eq _if-embedding-len-ne.]
+          ({[.hidden-len-eq] [.if-hidden-len-eq]}
+            assert-then [hidden-same-length.]
+            ({[.embedding-len-eq] [.if-embedding-len-eq]}
+              assert-then [embedding-same-length.]
+              ({[.hidden-raw] [.hidden-same-length]}
+                buf.f32.cast-same-length [hidden.]
+                ({[.embedding-raw] [.embedding-same-length]}
+                  buf.f32.cast-same-length [embedding.]
+                  ([.n-len] f32.matmul.len-copy-param [env-n producer-n.]
+                    ([.v-len] f32.matmul.len-copy-param [env-v producer-v.]
+                      ([.d-len] f32.matmul.len-copy-param [env-d producer-d.]
+                        ([.nv-len] f32.matmul.len-split5 [_unused-nv-a mem-len materializec-len _unused-nv-b _unused-nv-c _param-nv.]
+                          {
+                            [.mem-len]
+                            ({
+                              [.materializec-len]
+                              ({[.env-n]
+                                ({[.env-v]
+                                  ({[.env-d]
+                                    ({[.nd-len]
+                                      ({[.vd-len]
+                                        ({[.hidden] [.embedding]} *.intro)
+                                      } *.intro)
+                                    } *.intro)
+                                  } *.intro)
+                                } *.intro)
+                              } *.intro)
+                              ({[.producer-n] [.producer-v] [.producer-d]}
+                                name.smollm2.language-model-head-at)
+                            } materializec)
+                          } buf.to-mem
+                        )
+                      )
+                    )
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+))

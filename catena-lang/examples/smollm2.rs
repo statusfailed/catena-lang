@@ -71,7 +71,7 @@ fn main() -> anyhow::Result<()> {
             .step(token_id)
             .map_err(|error| anyhow::anyhow!("failed to decode prompt: {error}"))?;
     }
-    write!(output, "User: {}\nAssistant: ", args.prompt)?;
+    writeln!(output, "Loading weights...")?;
     output.flush()?;
 
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -91,6 +91,10 @@ fn main() -> anyhow::Result<()> {
     let checkpoint = SafeTensors::deserialize(&mapped)?;
     let mut inputs = model_inputs(&runtime, &checkpoint, &token_ids)?;
     profile_host("weights_decode_and_upload", weights_started);
+
+    writeln!(output, "Ready.")?;
+    write!(output, "User: {}\nAssistant: ", args.prompt)?;
+    output.flush()?;
 
     for token_index in 0..args.tokens {
         update_sequence_inputs(&runtime, &mut inputs, &token_ids)?;
@@ -234,20 +238,35 @@ fn push_weight(
 }
 
 fn tensor_to_f32(name: &str, tensor: TensorView<'_>) -> anyhow::Result<Vec<f32>> {
+    let shape = tensor.shape();
     let data = tensor.data();
-    match tensor.dtype() {
-        Dtype::BF16 => Ok(data
+    let values: Vec<f32> = match tensor.dtype() {
+        Dtype::BF16 => data
             .chunks_exact(2)
             .map(|bytes| {
                 let bits = u16::from_le_bytes([bytes[0], bytes[1]]);
                 f32::from_bits(u32::from(bits) << 16)
             })
-            .collect()),
-        Dtype::F32 => Ok(data
+            .collect(),
+        Dtype::F32 => data
             .chunks_exact(4)
             .map(|bytes| f32::from_le_bytes(bytes.try_into().expect("four-byte chunk")))
-            .collect()),
+            .collect(),
         dtype => anyhow::bail!("tensor {name} has unsupported dtype {dtype:?}"),
+    };
+
+    match shape {
+        [rows, columns] => {
+            let mut transposed = vec![0.0; values.len()];
+            for row in 0..*rows {
+                for column in 0..*columns {
+                    transposed[column * rows + row] = values[row * columns + column];
+                }
+            }
+            Ok(transposed)
+        }
+        [_] => Ok(values),
+        _ => anyhow::bail!("tensor {name} has unsupported shape {shape:?}"),
     }
 }
 

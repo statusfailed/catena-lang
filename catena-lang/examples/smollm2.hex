@@ -17,7 +17,7 @@
     ({({[.n] ({[.h] [.q]} *)} *) u64} :) # tokens * hidden size
     ({({[.h] [.n]} *) u64} :) # heads * tokens
     ({({[.n] ({[.h] [.n]} *)} *) u64} :) # tokens * heads * tokens
-    ({({[.v] ({[.h] [.q]} *)} *) u64} :) # vocabulary size * hidden size
+    ({({({[.h] [.q]} *) [.v]} *) u64} :) # transposed embedding: hidden size * vocabulary size
     ({({[.n] [.v]} *) u64} :) # tokens * vocabulary size
     ({[.i] u64} :) # MLP intermediate size
     ({({[.n] [.i]} *) u64} :) # tokens * intermediate size
@@ -279,7 +279,7 @@
   nd-len
   hn-len
   nhn-len
-  vd-len
+  dv-len
   nv-len
   i-len
   ni-len
@@ -528,7 +528,7 @@
   layer-23-mlp-down
   final-norm
 .]
-  ({[.token-ids token-embedding n-len d-len v-len nd-len vd-len]}
+  ({[.token-ids token-embedding n-len d-len v-len nd-len dv-len]}
     smollm2.embed-tokens [hidden-00.])
 
   ({[.hidden-00 layer-00-input-norm layer-00-query layer-00-key layer-00-value layer-00-attention-output layer-00-post-attention-norm layer-00-mlp-gate layer-00-mlp-up layer-00-mlp-down n-len h-len q-len d-len i-len nd-len hn-len nhn-len ni-len dd-len id-len di-len]} smollm2.decoder-layer [hidden-01.])
@@ -558,7 +558,7 @@
 
   ({[.hidden-24 final-norm n-len d-len nd-len]}
     smollm2.rmsnorm [normalized.])
-  ({[.normalized token-embedding n-len v-len d-len nd-len vd-len nv-len]}
+  ({[.normalized token-embedding n-len v-len d-len nd-len dv-len nv-len]}
     smollm2.language-model-head)
 ))
 
@@ -1534,13 +1534,13 @@
   ([n d i.] (cap.own mem))
 = ([hidden gate-weight up-weight down-weight n-len d-len i-len nd-len ni-len id-len di-len.]
   ([.hidden] {[x. x x]} [hidden-for-gate hidden-for-up.]
-    ({[.hidden-for-gate gate-weight n-len i-len d-len nd-len id-len ni-len]}
+    ({[.hidden-for-gate gate-weight n-len i-len d-len nd-len di-len ni-len]}
       smollm2.language-model-head [gate.]
-      ({[.hidden-for-up up-weight n-len i-len d-len nd-len id-len ni-len]}
+      ({[.hidden-for-up up-weight n-len i-len d-len nd-len di-len ni-len]}
         smollm2.language-model-head [up.]
         ({[.gate ni-len]} smollm2.pointwise-silu [activated-gate.]
           ({[.activated-gate up ni-len]} smollm2.pointwise-mul [gated-up.]
-            ({[.gated-up down-weight n-len d-len i-len ni-len di-len nd-len]}
+            ({[.gated-up down-weight n-len d-len i-len ni-len id-len nd-len]}
               smollm2.language-model-head)
           )
         )
@@ -1964,10 +1964,10 @@
         ({
           ({[.v] u64} :)
           ({
-            ({({[.v] [.d]} *) u64} :)
+            ({({[.d] [.v]} *) u64} :)
             ({
               ({cap.ref [.n] u64} buf val)
-              ({cap.ref ({[.v] [.d]} *) f32} buf val)
+              ({cap.ref ({[.d] [.v]} *) f32} buf val)
             } *)
           } *)
         } *)
@@ -1981,20 +1981,21 @@
   ([.env] *.elim [n-len rest-a.]
     ([.rest-a] *.elim [d-len rest-b.]
       ([.rest-b] *.elim [v-len rest-c.]
-        ([.rest-c] *.elim [vd-len buffers.]
+        ([.rest-c] *.elim [_dv-len buffers.]
           ([.buffers] *.elim [tokens embedding.]
-            ([.d-len] f32.matmul.len-copies3 [row-cols col-cols embedding-cols.]
+            ([.d-len] f32.matmul.len-copies2 [row-cols col-cols.]
+            ([.v-len] f32.matmul.len-copies3 [v-bounds v-index embedding-cols.]
               ([.flat] ix.copy [flat-for-row flat-for-col.]
                 ({[.row-cols] [.flat-for-row]} row-major-row [token-position.]
                   ({[.col-cols] [.flat-for-col]} row-major-col [channel.]
                     ({[.token-position] [.tokens]} ix [token-id.]
                       ([.token-id] u64.name [named-token-id.]
-                        ({[.v-len] [.named-token-id]} u64.gt [in-vocabulary if-in-vocabulary _if-out-of-vocabulary.]
+                        ({[.v-bounds] [.named-token-id]} u64.gt [in-vocabulary if-in-vocabulary _if-out-of-vocabulary.]
                           ({[.in-vocabulary] [.if-in-vocabulary]}
                             assert-then [token-in-vocabulary.]
-                            ({[.named-token-id] [.v-len] [.token-in-vocabulary]}
+                            ({[.named-token-id] [.v-index] [.token-in-vocabulary]}
                               u64.to-ix [token-row.]
-                              ({[.token-row] [.channel]} *.intro [embedding-index.]
+                              ({[.channel] [.token-row]} *.intro [embedding-index.]
                                 ({[.embedding-cols] [.embedding-index]}
                                   row-major-index [embedding-flat.]
                                   ({[.embedding-flat] [.embedding]} ix)
@@ -2008,6 +2009,7 @@
                   )
                 )
               )
+            )
             )
           )
         )
@@ -2027,15 +2029,15 @@
     ({[.d] u64} :)
     ({[.v] u64} :)
     ({({[.n] [.d]} *) u64} :)
-    ({({[.v] [.d]} *) u64} :)
+    ({({[.d] [.v]} *) u64} :)
   })
   ->
   ([n d v.] (cap.own mem))
-= ([token-mem embedding-mem n-len d-len v-len nd-len vd-len.]
+= ([token-mem embedding-mem n-len d-len v-len nd-len dv-len.]
   ([.token-mem] mem.cast.u64 [actual-n-len token-raw.]
     ([.embedding-mem] mem.cast.f32 [actual-vd-len embedding-raw.]
       ([.n-len actual-n-len] u64.eq [token-len-eq if-token-len-eq _if-token-len-ne.]
-        ([.vd-len actual-vd-len] u64.eq [embedding-len-eq if-embedding-len-eq _if-embedding-len-ne.]
+        ([.dv-len actual-vd-len] u64.eq [embedding-len-eq if-embedding-len-eq _if-embedding-len-ne.]
           ({[.token-len-eq] [.if-token-len-eq]}
             assert-then [token-same-length.]
             ({[.embedding-len-eq] [.if-embedding-len-eq]}
@@ -2055,7 +2057,7 @@
                               ({[.env-n]
                                 ({[.env-d]
                                   ({[.env-v]
-                                    ({[.vd-len]
+                                    ({[.dv-len]
                                       ({[.tokens] [.embedding]} *.intro)
                                     } *.intro)
                                   } *.intro)
@@ -2155,13 +2157,87 @@
   )
 ))
 
-# Compute one logit from:
-#
-#   hidden    : [tokens, hidden-size]
-#   embedding : [vocabulary-size, hidden-size]
-#
-# The embedding view is precomposed with swap-matrix-index, producing the
-# [hidden-size, vocabulary-size] view required by matrix multiplication.
+# Reduce `(sum, _), (a, b)` as `(fma(a, b, sum), b)`. The second component
+# carries the newest right operand only so reducec can represent the FMA fold
+# with its homogeneous accumulator/element type.
+(def program smollm2.matmul-fma-pair :
+  {
+    1
+    ({
+      ({(f32 val) (f32 val)} *)
+      ({(f32 val) (f32 val)} *)
+    } *)
+  }
+  ->
+  ({(f32 val) (f32 val)} *)
+= ([_environment pairs.]
+  ([.pairs] *.elim [accumulator item.]
+    ([.accumulator] *.elim [sum _previous-right.]
+      ([.item] *.elim [left right.]
+        ({[.left right sum]} f32.fma [next-sum.]
+          ({[.next-sum] [.right]} *.intro)
+        )
+      )
+    )
+  )
+))
+
+# Produce one `(A[row,k], B-transposed[k,column])` reduction item. Model
+# matrices are transposed once by the Rust loader, so adjacent output threads
+# read adjacent right-hand-side elements for each fixed k.
+(def program smollm2.matmul-pair-at :
+  ([n v d.] {
+    ({
+      ({[.d] u64} :)
+      ({
+        ({[.v] u64} :)
+        ({
+          ({({[.d] [.v]} *) u64} :)
+          ({
+            ({cap.own ({[.n] [.d]} *) f32} buf val)
+            ({
+              ({cap.ref ({[.d] [.v]} *) f32} buf val)
+              ({([.n] ix val) ([.v] ix val)} *)
+            } *)
+          } *)
+        } *)
+      } *)
+    } *)
+    ([.d] ix val)
+  })
+  ->
+  ([n v d.] ({(f32 val) (f32 val)} *))
+= ([env k.]
+  ([.env] *.elim [d-len rest-a.]
+    ([.rest-a] *.elim [v-len rest-b.]
+      ([.rest-b] *.elim [_dv-len rest-c.]
+        ([.rest-c] *.elim [hidden rest-d.]
+          ([.rest-d] *.elim [weight row-column.]
+            ([.row-column] *.elim [row column.]
+              ([.k] ix.copy [hidden-k weight-k.]
+              ({[.row] [.hidden-k]} *.intro [hidden-index-2d.]
+                ({[.d-len] [.hidden-index-2d]} row-major-index [hidden-index.]
+                  ({[.hidden-index] [.hidden]} ix [left.]
+                    ({[.weight-k] [.column]} *.intro [weight-index-2d.]
+                      ({[.v-len] [.weight-index-2d]} row-major-index [weight-index.]
+                        ({[.weight-index] [.weight]} ix [right.]
+                          ({[.left] [.right]} *.intro)
+                        )
+                      )
+                    )
+                  )
+                )
+              )
+            )
+            )
+          )
+        )
+      )
+    )
+  )
+))
+
+# Compute one output cell with a specialized direct-indexed FMA reduction.
 (def program smollm2.language-model-head-at :
   ([n v d.] {
     ({
@@ -2173,10 +2249,10 @@
           ({
             ({({[.n] [.d]} *) u64} :)
             ({
-              ({({[.v] [.d]} *) u64} :)
+              ({({[.d] [.v]} *) u64} :)
               ({
                 ({cap.own ({[.n] [.d]} *) f32} buf val)
-                ({cap.ref ({[.v] [.d]} *) f32} buf val)
+                ({cap.ref ({[.d] [.v]} *) f32} buf val)
               } *)
             } *)
           } *)
@@ -2189,46 +2265,61 @@
   ([n v d.] (f32 val))
 = ([env flat.]
   ([.env] *.elim [n-len rest-a.]
-    ([.rest-a] *.elim [v-len rest-b.]
-      ([.rest-b] *.elim [d-len rest-c.]
-        ([.rest-c] *.elim [nd-len rest-d.]
-          ([.rest-d] *.elim [vd-len buffers.]
-            ([.buffers] *.elim [hidden embedding.]
-              ([.n-len] f32.matmul.len-copy-param [hidden-rows producer-n.]
-                ([.v-len] f32.matmul.len-copies3 [generic-v embedding-rows swap-v-len.]
-                  ([.d-len] f32.matmul.len-split5 [generic-d hidden-cols embedding-cols swap-d-len _unused-d _param-d.]
-                    ([.swap-d-len] :.param [swap-d-param.]
-                      ([.swap-v-len] :.param [swap-v-param.]
-                        ({
-                          ({[.swap-d-param] [.swap-v-param]}
-                            name.smollm2.swap-matrix-index
-                            lift)
-                          ({[.embedding-rows] [.embedding-cols]
-                            ({[.vd-len] [.embedding]} f32.buf.view)}
-                            f32.row-major.matrix-view)
-                        } compose [embedding-transposed-view.]
+  ([.rest-a] *.elim [v-len rest-b.]
+  ([.rest-b] *.elim [d-len rest-c.]
+  ([.rest-c] *.elim [_nd-len rest-d.]
+  ([.rest-d] *.elim [dv-len buffers.]
+  ([.buffers] *.elim [hidden weight.]
+  ([.n-len] :.param [producer-n-param.]
+  ([.v-len] f32.matmul.len-split5
+    [row-cols col-cols producer-v _unused-v-a _unused-v-b producer-v-param.]
+    ([.d-len] f32.matmul.len-copies2-param [producer-d reduce-d producer-d-param.]
+      ([.flat] ix.copy [row-flat col-flat.]
+        ({[.row-cols] [.row-flat]} row-major-row [row.]
+          ({[.col-cols] [.col-flat]} row-major-col [column.]
+            ({[.row] [.column]} *.intro [producer-row-column.]
+                ({[.weight] [.producer-row-column]} *.intro [producer-weight.]
+                  ({[.hidden] [.producer-weight]} *.intro [producer-hidden.]
+                    ({[.dv-len] [.producer-hidden]} *.intro [producer-dv.]
+                      ({[.producer-v] [.producer-dv]} *.intro [producer-v-environment.]
+                        ({[.producer-d] [.producer-v-environment]} *.intro [producer-environment.]
                           ({
-                            [.generic-v]
-                            [.generic-d]
-                            ({[.hidden-rows] [.hidden-cols]
-                              ({[.nd-len] [.hidden]} smollm2.f32-buf-view)}
-                              f32.row-major.matrix-view)
-                            [.embedding-transposed-view]
-                            [.flat]
-                          } f32.matmul.row-major.cell-at)
+                            (const.u32.0x00000000 u32.bitcast-f32)
+                            (const.u32.0x00000000 u32.bitcast-f32)
+                          } *.intro [zero-pair.]
+                            {
+                              [.zero-pair]
+                              unit.intro
+                              name.smollm2.matmul-fma-pair
+                              ({
+                                [.producer-environment]
+                                ({[.producer-n-param] [.producer-v-param] [.producer-d-param]}
+                                  name.smollm2.matmul-pair-at)
+                              })
+                              [.reduce-d]
+                            } reducec [result-pair.]
+                            ([.result-pair] *.elim [result _last-right.]
+                              [.result]
+                            )
                         )
                       )
                     )
                   )
                 )
-              )
             )
           )
         )
       )
     )
   )
-))
+  )
+  )
+  )
+  )
+  )
+  )
+  )
+)))
 
 # Materialize all [tokens, vocabulary-size] logits. The six extent values make
 # every matrix shape and flat-buffer length explicit at the program boundary.
@@ -2240,16 +2331,16 @@
     ({[.v] u64} :)
     ({[.d] u64} :)
     ({({[.n] [.d]} *) u64} :)
-    ({({[.v] [.d]} *) u64} :)
+    ({({[.d] [.v]} *) u64} :)
     ({({[.n] [.v]} *) u64} :)
   })
   ->
   ([n v d.] (cap.own mem))
-= ([hidden-mem embedding-mem n-len v-len d-len nd-len vd-len nv-len.]
+= ([hidden-mem embedding-mem n-len v-len d-len nd-len dv-len nv-len.]
   ([.hidden-mem] mem.cast.f32 [actual-nd-len hidden-raw.]
     ([.embedding-mem] mem.cast.f32 [actual-vd-len embedding-raw.]
       ([.nd-len actual-nd-len] u64.eq [hidden-len-eq if-hidden-len-eq _if-hidden-len-ne.]
-        ([.vd-len actual-vd-len] u64.eq [embedding-len-eq if-embedding-len-eq _if-embedding-len-ne.]
+        ([.dv-len actual-vd-len] u64.eq [embedding-len-eq if-embedding-len-eq _if-embedding-len-ne.]
           ({[.hidden-len-eq] [.if-hidden-len-eq]}
             assert-then [hidden-same-length.]
             ({[.embedding-len-eq] [.if-embedding-len-eq]}
@@ -2258,10 +2349,33 @@
                 buf.f32.cast-same-length [hidden.]
                 ({[.embedding-raw] [.embedding-same-length]}
                   buf.f32.cast-same-length [embedding.]
-                  ([.nv-len] f32.matmul.len-copies2 [gemm-len mem-len.]
-                    ({[.hidden embedding n-len v-len d-len gemm-len]}
-                      f32.gemm-row-major-rhs-transposed [output.]
-                      ({[.mem-len] [.output]} buf.to-mem)
+                  ([.n-len] f32.matmul.len-copy-param [environment-n producer-n.]
+                    ([.v-len] f32.matmul.len-copy-param [environment-v producer-v.]
+                      ([.d-len] f32.matmul.len-copy-param [environment-d producer-d.]
+                        ([.nv-len] f32.matmul.len-copies2 [mem-len materializec-len.]
+                          ({[.environment-n]
+                            ({[.environment-v]
+                              ({[.environment-d]
+                                ({[.nd-len]
+                                ({[.dv-len]
+                                    ({[.hidden] [.embedding]} *.intro)
+                                  } *.intro)
+                                } *.intro)
+                              } *.intro)
+                            } *.intro)
+                          } *.intro [environment.]
+                            {
+                              [.mem-len]
+                              ({
+                                [.materializec-len]
+                                [.environment]
+                                ({[.producer-n] [.producer-v] [.producer-d]}
+                                  name.smollm2.language-model-head-at)
+                              } materializec)
+                            } buf.to-mem
+                          )
+                        )
+                      )
                     )
                   )
                 )

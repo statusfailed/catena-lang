@@ -73,6 +73,20 @@
     ({({[.x] ([.n] ix val)} *) ([.t] val)} -> val)
   } -> {[x n t.] ({cap.own [.n t]} buf val)})
 
+  # Platform BLAS entrypoint for the layout used by neural-network linear layers:
+  # output[n,m] = input[n,k] * weight[m,k]^T.
+  (arr f32.gemm-row-major-rhs-transposed :
+    ([n m k.] {
+      ({cap.own ({[.n] [.k]} *) f32} buf val)
+      ({cap.ref ({[.m] [.k]} *) f32} buf val)
+      ({[.n] u64} :)
+      ({[.m] u64} :)
+      ({[.k] u64} :)
+      ({({[.n] [.m]} *) u64} :)
+    })
+    ->
+    ([n m k.] ({cap.own ({[.n] [.m]} *) f32} buf val)))
+
   # TODO: make all mem.cast.* into definitions, using the below:
   #   mem.cast : mem ● (s : u64) ● sizeof(t, s) -> (n : u64) ● val(buf n t)
   # and introduce

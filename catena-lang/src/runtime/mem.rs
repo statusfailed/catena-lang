@@ -42,6 +42,9 @@ pub struct Mem {
 
 impl Mem {
     pub fn to_f32_vec(&self) -> Vec<f32> {
+        self.gpu
+            .synchronize()
+            .expect("failed to synchronize GPU memory before f32 readback");
         let bytes = self.abi.len as usize;
         assert_eq!(
             bytes % std::mem::size_of::<f32>(),
@@ -56,6 +59,9 @@ impl Mem {
     }
 
     pub fn to_u64_vec(&self) -> Vec<u64> {
+        self.gpu
+            .synchronize()
+            .expect("failed to synchronize GPU memory before u64 readback");
         let bytes = self.abi.len as usize;
         assert_eq!(
             bytes % std::mem::size_of::<u64>(),
@@ -187,6 +193,25 @@ impl GpuRuntime {
                 })?
         };
         gpu_check(self.dialect, unsafe { free(ptr) })
+    }
+
+    fn synchronize(&self) -> Result<(), MemError> {
+        let symbol = match self.dialect {
+            GpuDialect::Hip => "hipDeviceSynchronize",
+            GpuDialect::Cuda => "cudaDeviceSynchronize",
+        };
+        let symbol_cstr =
+            CString::new(symbol).expect("runtime symbol names should not contain NUL");
+        let synchronize = unsafe {
+            self.library
+                .get::<unsafe extern "C" fn() -> c_int>(symbol_cstr.as_bytes_with_nul())
+                .map_err(|source| MemError::LoadSymbol {
+                    dialect: self.dialect,
+                    symbol,
+                    source,
+                })?
+        };
+        gpu_check(self.dialect, unsafe { synchronize() })
     }
 }
 

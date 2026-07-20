@@ -10,7 +10,7 @@ use crate::codegen::{
         GpuFunctionPlacement, direct_function_placement, function_placement, function_placements,
     },
     lower_types::CType,
-    ops::{ifc, materializec, reducec, row_major},
+    ops::{gemm, ifc, materializec, reducec, row_major},
     prelude::render_gpu_prelude,
     render_utils::{c_type, invalid_inputs, invalid_outputs, param_decl},
     runtime_type,
@@ -393,6 +393,7 @@ fn render_assignment(
         "u64.to-ix" => render_u64_to_ix(out, assignment)?,
         "eval" => render_eval(out, assignment)?,
         "reducec" => reducec::render(out, assignment)?,
+        gemm::OP => gemm::render(out, assignment, dialect)?,
         "gpu.materialize" => render_materialize_call(out, function, assignment, dialect)?,
         "materializec" => materializec::render_call(out, function, assignment, dialect)?,
         op if op.starts_with(CONST_U64_PREFIX) => {
@@ -1038,6 +1039,10 @@ fn render_materialize_call(
         managed_alloc_fn = dialect.managed_alloc_fn(),
     ));
     out.push_str(&format!(
+        "    catena_profile_span_t catena_profile_{name} = catena_profile_start();\n",
+        name = output.name,
+    ));
+    out.push_str(&format!(
         "    {kernel_name}<<<dim3({launch}.grid_dim.x, {launch}.grid_dim.y, {launch}.grid_dim.z), dim3({launch}.block_dim.x, {launch}.block_dim.y, {launch}.block_dim.z)>>>\n"
     ));
     out.push_str(&format!(
@@ -1053,6 +1058,10 @@ fn render_materialize_call(
         }
     }
     out.push_str(");\n");
+    out.push_str(&format!(
+        "    catena_profile_finish(catena_profile_{name}, \"{kernel_name}\", {name}_len);\n",
+        name = output.name,
+    ));
     out.push_str(&format!("    {} = {}_data;\n", output.name, output.name));
     Ok(())
 }

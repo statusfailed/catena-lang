@@ -2,6 +2,7 @@ use std::{
     fs::File,
     io::{self, Write},
     path::PathBuf,
+    time::Instant,
 };
 
 use catena_lang::{
@@ -15,13 +16,12 @@ use safetensors::{Dtype, SafeTensors, tensor::TensorView};
 use tokenizers::Tokenizer;
 
 const LAYERS: usize = 24;
-const GENERATED_TOKENS: usize = 10;
 const HEADS: u64 = 32;
 const HEAD_DIM: u64 = 64;
 const HIDDEN_SIZE: u64 = HEADS * HEAD_DIM;
 const VOCAB_SIZE: u64 = 49_152;
 const INTERMEDIATE_SIZE: u64 = 8_192;
-const EXTENTS: usize = 13;
+const EXTENTS: usize = 15;
 const FORWARD_INPUTS: usize = 2 + EXTENTS + LAYERS * 9 + 1;
 
 #[derive(Parser)]
@@ -32,9 +32,14 @@ struct Args {
 
     /// Prompt to continue.
     prompt: String,
+
+    /// Number of tokens to generate.
+    #[arg(long, default_value_t = 10)]
+    tokens: usize,
 }
 
 fn main() -> anyhow::Result<()> {
+    let process_started = Instant::now();
     let args = Args::parse();
     let tokenizer_path = args.model_dir.join("tokenizer.json");
     let weights_path = args.model_dir.join("model.safetensors");
@@ -70,6 +75,7 @@ fn main() -> anyhow::Result<()> {
     output.flush()?;
 
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let runtime_started = Instant::now();
     let runtime = Runtime::new(
         stdlib::paths_from(&root).chain([
             root.join("examples/nn.hex"),
@@ -77,19 +83,26 @@ fn main() -> anyhow::Result<()> {
         ]),
         configured_gpu_dialect()?,
     )?;
+    profile_host("runtime_init", runtime_started);
 
+    let weights_started = Instant::now();
     let file = File::open(&weights_path)?;
     let mapped = unsafe { Mmap::map(&file)? };
     let checkpoint = SafeTensors::deserialize(&mapped)?;
     let mut inputs = model_inputs(&runtime, &checkpoint, &token_ids)?;
+    profile_host("weights_decode_and_upload", weights_started);
 
-    for _ in 0..GENERATED_TOKENS {
+    for token_index in 0..args.tokens {
         update_sequence_inputs(&runtime, &mut inputs, &token_ids)?;
+        let forward_started = Instant::now();
         let [logits] = runtime.exec_borrowed("smollm2.forward", &inputs)?;
+        profile_host(&format!("forward_{token_index}"), forward_started);
         let Value::Mem(logits) = logits else {
             anyhow::bail!("smollm2.forward returned a non-memory value");
         };
+        let readback_started = Instant::now();
         let logits = logits.to_f32_vec();
+        profile_host(&format!("readback_{token_index}"), readback_started);
         let expected = token_ids.len() * VOCAB_SIZE as usize;
         anyhow::ensure!(
             logits.len() == expected,
@@ -116,7 +129,17 @@ fn main() -> anyhow::Result<()> {
     }
 
     writeln!(output)?;
+    profile_host("process_total", process_started);
     Ok(())
+}
+
+fn profile_host(name: &str, started: Instant) {
+    if std::env::var_os("CATENA_GPU_PROFILE").is_some() {
+        eprintln!(
+            "CATENA_HOST_PROFILE\t{name}\t{:.3}",
+            started.elapsed().as_secs_f64() * 1_000.0
+        );
+    }
 }
 
 fn model_inputs(
@@ -186,6 +209,8 @@ fn sequence_extents(tokens: usize) -> anyhow::Result<[u64; EXTENTS]> {
         HIDDEN_SIZE,
         VOCAB_SIZE,
         tokens * HIDDEN_SIZE,
+        HEADS * tokens,
+        tokens * HEADS * tokens,
         VOCAB_SIZE * HIDDEN_SIZE,
         tokens * VOCAB_SIZE,
         INTERMEDIATE_SIZE,

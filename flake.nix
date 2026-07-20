@@ -20,6 +20,7 @@
             pkgs.rocmPackages.rocm-core
             pkgs.rocmPackages.rocm-device-libs
             pkgs.rocmPackages.rocm-runtime
+            pkgs.rocmPackages.rocblas
           ];
         };
     in
@@ -36,6 +37,7 @@
               pkgs.gnumake
               pkgs.rocmPackages.clang
               pkgs.rocmPackages.hipcc
+              pkgs.rocmPackages.rocblas
               pkgs.rocmPackages.rocminfo
             ];
             shellHook = ''

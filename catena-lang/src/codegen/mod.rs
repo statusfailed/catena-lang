@@ -61,6 +61,13 @@ impl GpuDialect {
         }
     }
 
+    pub fn blas_header(self) -> &'static str {
+        match self {
+            Self::Hip => "rocblas/rocblas.h",
+            Self::Cuda => "cublas_v2.h",
+        }
+    }
+
     pub fn error_type(self) -> &'static str {
         match self {
             Self::Hip => "hipError_t",

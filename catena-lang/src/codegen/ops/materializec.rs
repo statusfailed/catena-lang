@@ -122,6 +122,10 @@ pub(in crate::codegen) fn render_call(
         managed_alloc_fn = dialect.managed_alloc_fn(),
     ));
     out.push_str(&format!(
+        "        catena_profile_span_t catena_profile_{name} = catena_profile_start();\n",
+        name = output.name,
+    ));
+    out.push_str(&format!(
         "        {kernel_name}<<<dim3(({name}_len + 255) / 256), dim3(256)>>>\n",
         name = output.name
     ));
@@ -136,6 +140,10 @@ pub(in crate::codegen) fn render_call(
         }
     }
     out.push_str(");\n");
+    out.push_str(&format!(
+        "        catena_profile_finish(catena_profile_{name}, \"{kernel_name}\", {name}_len);\n",
+        name = output.name,
+    ));
     out.push_str(&format!(
         "        catena_host_gpu_check({synchronize_fn}());\n",
         synchronize_fn = dialect.synchronize_fn()

@@ -67,7 +67,8 @@ pub(crate) fn compile(cpp_path: &Path, dialect: GpuDialect) -> Result<Artifact, 
                 .arg("-ffp-contract=off")
                 // This is the default, but keep it explicit because reproducibility
                 // depends on avoiding reassociation and other fast-math transforms.
-                .arg("-fno-fast-math");
+                .arg("-fno-fast-math")
+                .arg("-lrocblas");
         }
         GpuDialect::Cuda => {
             command
@@ -75,7 +76,8 @@ pub(crate) fn compile(cpp_path: &Path, dialect: GpuDialect) -> Result<Artifact, 
                 .arg("-fPIC")
                 .arg("--std=c++17")
                 // Match the no-FMA intent for generated arithmetic.
-                .arg("--fmad=false");
+                .arg("--fmad=false")
+                .arg("-lcublas");
         }
     }
     let output = command
